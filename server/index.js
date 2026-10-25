@@ -127,33 +127,64 @@ app.get('/api/sample-excel', (req, res) => {
   }
 });
 
-// Build graph from uploaded Excel or sample
-app.post('/api/graph/build', upload.single('file'), async (req, res) => {
+// Build graph from uploaded files (multi-file support) or sample
+app.post('/api/graph/build', upload.any(), async (req, res) => {
   try {
     const { llmConfig, neo4jConfig } = getConfigs(req);
-    let fileBuffer = req.file ? req.file.buffer : null;
+    const uploadedFiles = req.files || [];
+    const filesToProcess = [];
 
-    // Check if user requested a built-in sample
-    if (!fileBuffer && req.body.useSample === 'true') {
-      const sampleType = req.body.sampleType || 'applications';
-      let filename = 'enterprise_application_stack.xlsx';
-      if (sampleType === 'supply_chain') filename = 'supply_chain_logistics.xlsx';
-      if (sampleType === 'healthcare') filename = 'healthcare_clinical_network.xlsx';
+    // 1. Collect files from upload
+    uploadedFiles.forEach(f => {
+      filesToProcess.push({
+        originalname: f.originalname,
+        buffer: f.buffer,
+        size: f.size,
+        mimetype: f.mimetype
+      });
+    });
 
-      const samplePath = path.join(__dirname, '..', 'sampleData', filename);
-      if (fs.existsSync(samplePath)) {
-        fileBuffer = fs.readFileSync(samplePath);
+    // 2. Collect sample files if requested
+    if (req.body.useSample === 'true') {
+      let sampleTypes = ['applications'];
+      if (req.body.sampleTypes) {
+        try {
+          sampleTypes = JSON.parse(req.body.sampleTypes);
+        } catch (e) {
+          sampleTypes = [req.body.sampleType || 'applications'];
+        }
+      } else if (req.body.sampleType) {
+        sampleTypes = [req.body.sampleType];
       }
+
+      sampleTypes.forEach(st => {
+        let filename = 'enterprise_application_stack.xlsx';
+        if (st === 'supply_chain') filename = 'supply_chain_logistics.xlsx';
+        if (st === 'healthcare') filename = 'healthcare_clinical_network.xlsx';
+
+        const samplePath = path.join(__dirname, '..', 'sampleData', filename);
+        if (fs.existsSync(samplePath)) {
+          const buf = fs.readFileSync(samplePath);
+          filesToProcess.push({
+            originalname: filename,
+            buffer: buf,
+            size: buf.length,
+            mimetype: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+          });
+        }
+      });
     }
 
-    if (!fileBuffer && !req.body.rows) {
-      return res.status(400).json({ error: 'No Excel file uploaded and no sample selected.' });
+    if (filesToProcess.length === 0 && !req.body.rows) {
+      return res.status(400).json({ error: 'No files uploaded and no sample selected.' });
     }
 
-    const result = await graphBuilderService.buildGraphFromExcel({
-      fileBuffer,
+    const result = await graphBuilderService.buildGraphFromMultiFiles({
+      files: filesToProcess,
       rows: req.body.rows ? JSON.parse(req.body.rows) : null,
       mode: req.body.mode || 'auto',
+      includeLineage: req.body.includeLineage !== 'false',
+      resolveCrossFile: req.body.resolveCrossFile !== 'false',
       llmConfig,
       neo4jConfig
     });

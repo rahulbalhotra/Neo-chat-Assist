@@ -148,6 +148,30 @@ export default function GraphViewer({
       };
     }
 
+    // Document nodes (File provenance)
+    if (cat === 'Document') {
+      return {
+        color: { background: '#0f172a', border: '#0284c7', highlight: { background: '#1e293b', border: '#38bdf8' } },
+        shape: 'box',
+        shapeProperties: { borderRadius: 10 },
+        borderWidth: 2.5,
+        margin: { top: 10, bottom: 10, left: 16, right: 16 },
+        font: { color: '#ffffff', size: 13, bold: true, face: 'Inter, system-ui, sans-serif' }
+      };
+    }
+
+    // Chunk nodes (Semantic partition)
+    if (cat === 'Chunk') {
+      return {
+        color: { background: '#fef3c7', border: '#d97706', highlight: { background: '#fef9c3', border: '#b45309' } },
+        shape: 'box',
+        shapeProperties: { borderRadius: 6 },
+        borderWidth: 1.5,
+        margin: { top: 6, bottom: 6, left: 10, right: 10 },
+        font: { color: '#92400e', size: 11, bold: true, face: 'Inter, system-ui, sans-serif' }
+      };
+    }
+
     // Dynamic Universal Entity styling
     const palette = getCategoryColor(cat);
     return {
@@ -189,7 +213,7 @@ export default function GraphViewer({
       return {
         id: n.id,
         label: n.label,
-        title: `${n.category}: ${n.label}${n.properties?.annualCost ? `\nAnnual Cost: $${Number(n.properties.annualCost).toLocaleString()}` : ''}`,
+        title: `${n.category}: ${n.label}${n.properties?.annualCost ? `\nAnnual Cost: $${Number(n.properties.annualCost).toLocaleString()}` : ''}${n.properties?.summary ? `\nSummary: ${n.properties.summary}` : ''}`,
         ...style,
         borderWidth: isHighlighted ? 4 : style.borderWidth || 2,
         color: isHighlighted 
@@ -202,29 +226,52 @@ export default function GraphViewer({
     const activeNodeIds = new Set(visNodes.map(n => n.id));
     const visEdges = (graphData.edges || [])
       .filter(e => activeNodeIds.has(e.from) && activeNodeIds.has(e.to))
-      .map(e => ({
-        id: e.id,
-        from: e.from,
-        to: e.to,
-        label: e.label,
-        arrows: {
-          to: { enabled: true, scaleFactor: 0.65 }
-        },
-        color: { 
-          color: '#94a3b8', 
-          highlight: '#0284c7',
-          hover: '#0ea5e9'
-        },
-        font: { 
-          color: '#475569', 
-          size: 10, 
-          align: 'middle',
-          background: '#ffffff',
-          strokeWidth: 2,
-          strokeColor: '#ffffff'
-        },
-        smooth: { type: 'continuous', roundness: 0.25 }
-      }));
+      .map(e => {
+        const isShares = e.label?.includes('SHARES') || e.type === 'SHARES_ENTITIES';
+        const isHasChunk = e.label === 'HAS_CHUNK';
+        const isExtracts = e.label === 'EXTRACTS' || e.label === 'EXTRACTS_ENTITY';
+
+        let edgeColor = '#94a3b8';
+        let dashes = false;
+        let width = 1.6;
+
+        if (isShares) {
+          edgeColor = '#059669';
+          width = 3.2;
+        } else if (isHasChunk) {
+          edgeColor = '#0284c7';
+          dashes = [4, 4];
+        } else if (isExtracts) {
+          edgeColor = '#d97706';
+          dashes = [2, 4];
+        }
+
+        return {
+          id: e.id,
+          from: e.from,
+          to: e.to,
+          label: e.label,
+          dashes,
+          width,
+          arrows: {
+            to: { enabled: true, scaleFactor: isShares ? 0.9 : 0.65 }
+          },
+          color: { 
+            color: edgeColor, 
+            highlight: '#0284c7',
+            hover: '#0ea5e9'
+          },
+          font: { 
+            color: isShares ? '#059669' : '#475569', 
+            size: 10, 
+            align: 'middle',
+            background: '#ffffff',
+            strokeWidth: 2,
+            strokeColor: '#ffffff'
+          },
+          smooth: { type: 'continuous', roundness: 0.25 }
+        };
+      });
 
     const data = {
       nodes: new DataSet(visNodes),

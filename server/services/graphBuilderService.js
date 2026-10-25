@@ -32,27 +32,33 @@ Respond STRICTLY in valid JSON:
 { "applications": [ { ... } ] }
 `.trim();
 
-// 2. PROMPT FOR UNIVERSAL KNOWLEDGE GRAPH EXTRACTION (ANY EXCEL SHEET)
-const UNIVERSAL_GRAPH_PROMPT = `
-You are an Advanced Universal Knowledge Graph Builder (identical to Neo4j LLM Graph Builder).
-Your task is to analyze arbitrary tabular records from ANY domain (Supply Chain, Healthcare, HR, Sales, E-Commerce, Logistics, etc.) and extract real-world Entity Nodes and Semantic Directed Relationships.
-
-Rules:
-1. Identify distinct Real-World Entities (Nodes):
-   - id: Unique clean string identifier (e.g. "Part_PRT101", "Supplier_Panasonic", "Doctor_EmilyChen", "Patient_SarahJenkins")
-   - label: TitleCase entity type (e.g. "Part", "Supplier", "Factory", "Warehouse", "Patient", "Doctor", "Hospital", "Diagnosis", "Medication", "Customer", "Order")
+// 2. PROMPT FOR MULTI-FILE CHUNK KNOWLEDGE GRAPH EXTRACTION
+const MULTI_FILE_CHUNK_PROMPT = `
+You are an Advanced Multi-File Knowledge Graph Builder (similar to Neo4j LLM Graph Builder).
+You are processing a Document Chunk from an uploaded file.
+Your job is to:
+1. Extract chunk metadata:
+   - summary: 1-2 sentence description of what this chunk covers
+   - keyTopics: array of 2-5 main concepts or tags (e.g. ["Inventory", "Logistics", "SAP Integration"])
+2. Extract real-world Entity Nodes:
+   - id: Unique clean string identifier (e.g. "Part_PRT101", "Supplier_Panasonic", "App_SAP_ERP", "Patient_SarahJenkins")
+   - label: TitleCase entity type (e.g. "Part", "Supplier", "Warehouse", "Application", "Department", "Patient", "Doctor", "Technology")
    - name: Clear display name
-   - properties: Clean object of all descriptive properties from the row
-2. Identify Meaningful Semantic Relationships connecting these entities:
+   - properties: Clean object of all descriptive properties from the records
+3. Extract meaningful Semantic Directed Relationships:
    - from: Source node id
    - fromLabel: Source node label
    - to: Target node id
    - toLabel: Target node label
-   - type: UPPERCASE_SNAKE_CASE verb (e.g. "SUPPLIED_BY", "SHIPPED_TO", "MANUFACTURED_AT", "DIAGNOSED_WITH", "TREATED_BY", "WORKS_AT", "CONTAINS", "PURCHASED")
-   - properties: Edge metadata (date, cost, status, days, dose, etc.)
+   - type: UPPERCASE_SNAKE_CASE verb (e.g. "SUPPLIED_BY", "DEPENDS_ON", "USES_TECH", "HOSTED_ON", "LOCATED_IN", "TREATED_BY", "MANUFACTURED_AT")
+   - properties: Edge metadata (cost, date, status, role, etc.)
 
 Respond STRICTLY in valid JSON:
 {
+  "chunkMetadata": {
+    "summary": "...",
+    "keyTopics": ["...", "..."]
+  },
   "nodes": [
     { "id": "...", "label": "...", "name": "...", "properties": { ... } }
   ],
@@ -63,44 +69,139 @@ Respond STRICTLY in valid JSON:
 `.trim();
 
 /**
- * Parse Excel or CSV buffer
+ * Parse any file (Excel, CSV, JSON, TXT, MD)
  */
-function parseExcelBuffer(buffer) {
-  const workbook = XLSX.read(buffer, { type: 'buffer' });
-  const firstSheetName = workbook.SheetNames[0];
-  const worksheet = workbook.Sheets[firstSheetName];
-  const rows = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
-  return { sheetName: firstSheetName, rows };
+function parseFile(file) {
+  const fileName = file.originalname || 'uploaded_file';
+  const ext = (fileName.split('.').pop() || '').toLowerCase();
+  const buffer = file.buffer;
+
+  if (ext === 'xlsx' || ext === 'xls' || ext === 'csv') {
+    const workbook = XLSX.read(buffer, { type: 'buffer' });
+    const firstSheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[firstSheetName];
+    const rows = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+    return {
+      fileName,
+      fileType: ext,
+      size: file.size || buffer.length,
+      type: 'tabular',
+      records: rows,
+      sheetName: firstSheetName
+    };
+  }
+
+  if (ext === 'json') {
+    try {
+      const text = buffer.toString('utf-8');
+      const data = JSON.parse(text);
+      const records = Array.isArray(data) ? data : [data];
+      return {
+        fileName,
+        fileType: 'json',
+        size: file.size || buffer.length,
+        type: 'tabular',
+        records
+      };
+    } catch (e) {
+      // Fallback to text
+    }
+  }
+
+  // Text or Markdown
+  const textContent = buffer.toString('utf-8');
+  return {
+    fileName,
+    fileType: ext || 'txt',
+    size: file.size || buffer.length,
+    type: 'text',
+    textContent
+  };
 }
 
 /**
- * Detect spreadsheet type: 'application' vs 'universal'
+ * Split a parsed file into semantic chunks
  */
-function detectSpreadsheetDomain(rows) {
-  if (!rows || rows.length === 0) return 'universal';
-  const firstRow = rows[0];
-  const keys = Object.keys(firstRow).map(k => k.toLowerCase());
+function chunkFile(fileData, chunkSize = 6) {
+  const chunks = [];
+  const cleanDocId = `doc_${fileData.fileName.replace(/[^a-zA-Z0-9]/g, '_')}`;
 
-  const appIndicators = ['application', 'app name', 'tech stack', 'architecture health', 'cloud readiness', 'criticality'];
-  const matchCount = appIndicators.filter(ind => keys.some(k => k.includes(ind))).length;
+  if (fileData.type === 'tabular') {
+    const records = fileData.records || [];
+    for (let i = 0; i < records.length; i += chunkSize) {
+      const chunkRecords = records.slice(i, i + chunkSize);
+      const chunkIndex = Math.floor(i / chunkSize);
+      const previewText = JSON.stringify(chunkRecords, null, 2);
+      
+      chunks.push({
+        id: `chunk_${cleanDocId}_${chunkIndex}`,
+        docId: cleanDocId,
+        fileName: fileData.fileName,
+        chunkIndex,
+        records: chunkRecords,
+        previewText: previewText.slice(0, 300),
+        fullText: previewText,
+        rowCount: chunkRecords.length,
+        type: 'tabular'
+      });
+    }
+  } else {
+    // Text-based chunking by paragraphs/sections
+    const text = fileData.textContent || '';
+    const paragraphs = text.split(/\n\s*\n/).filter(p => p.trim().length > 0);
+    let currentChunkText = '';
+    let currentIdx = 0;
 
-  return matchCount >= 2 ? 'application' : 'universal';
+    paragraphs.forEach((p) => {
+      if ((currentChunkText + '\n\n' + p).length > 1200 && currentChunkText.length > 0) {
+        chunks.push({
+          id: `chunk_${cleanDocId}_${currentIdx}`,
+          docId: cleanDocId,
+          fileName: fileData.fileName,
+          chunkIndex: currentIdx,
+          previewText: currentChunkText.slice(0, 300),
+          fullText: currentChunkText,
+          rowCount: 1,
+          type: 'text'
+        });
+        currentIdx++;
+        currentChunkText = p;
+      } else {
+        currentChunkText = currentChunkText ? currentChunkText + '\n\n' + p : p;
+      }
+    });
+
+    if (currentChunkText.trim().length > 0) {
+      chunks.push({
+        id: `chunk_${cleanDocId}_${currentIdx}`,
+        docId: cleanDocId,
+        fileName: fileData.fileName,
+        chunkIndex: currentIdx,
+        previewText: currentChunkText.slice(0, 300),
+        fullText: currentChunkText,
+        rowCount: 1,
+        type: 'text'
+      });
+    }
+  }
+
+  return chunks;
 }
 
 /**
- * Universal Rule-Based Heuristic Parser (fallback if no LLM key provided)
+ * Universal Rule-Based Heuristic Parser for a chunk (fallback when LLM key not configured)
  */
-function heuristicUniversalParser(rows) {
+function heuristicChunkParser(chunk) {
   const nodesMap = new Map();
   const edgesMap = new Map();
 
-  rows.forEach((row, rowIdx) => {
+  const records = chunk.records || [];
+  records.forEach((row, rowIdx) => {
     const keys = Object.keys(row);
     if (keys.length === 0) return;
 
-    // Pick primary key / entity (first non-empty column)
     const primaryKey = keys[0];
-    const primaryVal = String(row[primaryKey] || `Row_${rowIdx + 1}`).trim();
+    const primaryVal = String(row[primaryKey] || `Record_${chunk.chunkIndex}_${rowIdx + 1}`).trim();
     const primaryCleanLabel = primaryKey.replace(/[^a-zA-Z]/g, '') || 'Item';
     const primaryId = `${primaryCleanLabel}_${primaryVal.replace(/[^a-zA-Z0-9]/g, '_')}`;
 
@@ -114,7 +215,6 @@ function heuristicUniversalParser(rows) {
       });
     }
 
-    // Inspect other columns to find entity connections
     keys.slice(1).forEach(colKey => {
       const val = row[colKey];
       if (val === null || val === undefined || val === '') return;
@@ -122,8 +222,7 @@ function heuristicUniversalParser(rows) {
       const strVal = String(val).trim();
       const numVal = Number(strVal);
 
-      // If text string and not purely numeric, treat as related entity node!
-      if (isNaN(numVal) && strVal.length > 1 && strVal.length < 50) {
+      if (isNaN(numVal) && strVal.length > 1 && strVal.length < 60) {
         const entityLabel = colKey.replace(/[^a-zA-Z]/g, '') || 'Category';
         const entityId = `${entityLabel}_${strVal.replace(/[^a-zA-Z0-9]/g, '_')}`;
 
@@ -137,18 +236,17 @@ function heuristicUniversalParser(rows) {
           });
         }
 
-        // Derive semantic relationship name from column header
         let relType = `HAS_${entityLabel.toUpperCase()}`;
         const lowerKey = colKey.toLowerCase();
         if (lowerKey.includes('supplier')) relType = 'SUPPLIED_BY';
         else if (lowerKey.includes('factory')) relType = 'MANUFACTURED_AT';
         else if (lowerKey.includes('warehouse')) relType = 'STORED_IN';
-        else if (lowerKey.includes('carrier')) relType = 'SHIPPED_VIA';
+        else if (lowerKey.includes('department')) relType = 'OWNED_BY';
+        else if (lowerKey.includes('host') || lowerKey.includes('platform')) relType = 'HOSTED_ON';
         else if (lowerKey.includes('doctor') || lowerKey.includes('physician')) relType = 'TREATED_BY';
         else if (lowerKey.includes('hospital')) relType = 'ADMITTED_TO';
-        else if (lowerKey.includes('diagnosis')) relType = 'DIAGNOSED_WITH';
-        else if (lowerKey.includes('medication')) relType = 'PRESCRIBED';
-        else if (lowerKey.includes('department')) relType = 'OWNED_BY';
+        else if (lowerKey.includes('tech')) relType = 'USES_TECH';
+        else if (lowerKey.includes('depend')) relType = 'DEPENDS_ON';
 
         const edgeId = `${primaryId}_${relType}_${entityId}`;
         if (!edgesMap.has(edgeId)) {
@@ -158,6 +256,7 @@ function heuristicUniversalParser(rows) {
             fromLabel: primaryCleanLabel,
             to: entityId,
             toLabel: entityLabel,
+            type: relType,
             label: relType,
             properties: {}
           });
@@ -167,13 +266,17 @@ function heuristicUniversalParser(rows) {
   });
 
   return {
+    chunkMetadata: {
+      summary: `Batch ${chunk.chunkIndex + 1} with ${records.length} records.`,
+      keyTopics: ['Records', chunk.fileName]
+    },
     nodes: Array.from(nodesMap.values()),
     relationships: Array.from(edgesMap.values())
   };
 }
 
 /**
- * Universal Neo4j Ingestion (Ingests ANY dynamic labels and relationships)
+ * Universal Neo4j Ingestion (Ingests Document, Chunk, and Entity nodes + relationships)
  */
 async function ingestUniversalToNeo4j(nodes, relationships, config) {
   const { driver, database } = neo4jService.getDriver(config);
@@ -182,7 +285,7 @@ async function ingestUniversalToNeo4j(nodes, relationships, config) {
   try {
     // 1. Ingest all Nodes
     for (const node of nodes) {
-      const safeLabel = (node.label || 'Entity').replace(/[^a-zA-Z0-9_]/g, '');
+      const safeLabel = (node.label || node.category || 'Entity').replace(/[^a-zA-Z0-9_]/g, '');
       const cypher = `
         MERGE (n:\`${safeLabel}\` {id: $id})
         SET n.name = $name,
@@ -197,7 +300,7 @@ async function ingestUniversalToNeo4j(nodes, relationships, config) {
 
     // 2. Ingest all Relationships
     for (const rel of relationships) {
-      const safeType = (rel.type || 'CONNECTED_TO').replace(/[^a-zA-Z0-9_]/g, '');
+      const safeType = (rel.type || rel.label || 'CONNECTED_TO').replace(/[^a-zA-Z0-9_]/g, '');
       const cypher = `
         MATCH (a {id: $fromId})
         MATCH (b {id: $toId})
@@ -218,114 +321,18 @@ async function ingestUniversalToNeo4j(nodes, relationships, config) {
 }
 
 /**
- * Ingest classified applications into Neo4j
+ * MULTI-FILE KNOWLEDGE GRAPH BUILDER
+ * Ingests multiple files, generates Document + Chunk nodes, extracts entities, and cross-connects them!
  */
-async function ingestApplicationsToNeo4j(analyzedApps, config) {
-  const { driver, database } = neo4jService.getDriver(config);
-  const session = driver.session({ database });
-
-  try {
-    for (const app of analyzedApps) {
-      const appCypher = `
-        MERGE (a:Application {name: $name})
-        SET a.annualCost = toInteger($annualCost),
-            a.businessCriticality = $businessCriticality,
-            a.architectureHealth = $architectureHealth,
-            a.cloudReadiness = $cloudReadiness,
-            a.activeUsers = toInteger($activeUsers),
-            a.rationale = $rationale,
-            a.actionPlan = $actionPlan,
-            a.description = $description,
-            a.vendor = $vendor,
-            a.hosting = $hosting,
-            a.department = $department,
-            a.classification = $classification
-
-        WITH a
-        MERGE (c:Classification {name: $classification})
-        MERGE (a)-[rClass:CLASSIFIED_AS]->(c)
-        SET rClass.confidence = $confidence,
-            rClass.rationale = $rationale,
-            rClass.actionPlan = $actionPlan
-
-        WITH a
-        MERGE (d:Department {name: $department})
-        MERGE (a)-[:OWNED_BY]->(d)
-
-        WITH a
-        MERGE (p:Platform {name: $hosting})
-        MERGE (a)-[:HOSTED_ON]->(p)
-
-        WITH a
-        MERGE (v:Vendor {name: $vendor})
-        MERGE (a)-[:PROVIDED_BY]->(v)
-      `;
-
-      await session.run(appCypher, {
-        name: app.name,
-        annualCost: app.annualCost || 0,
-        businessCriticality: app.businessCriticality || 'Medium',
-        architectureHealth: app.architectureHealth || 'Stable',
-        cloudReadiness: app.cloudReadiness || 'Cloud Ready',
-        activeUsers: app.activeUsers || 0,
-        rationale: app.rationale || '',
-        actionPlan: app.actionPlan || '',
-        description: app.description || '',
-        vendor: app.vendor || 'Unknown',
-        hosting: app.hosting || 'On-Premises',
-        department: app.department || 'General IT',
-        classification: app.classification || 'RETAIN',
-        confidence: app.confidence || 0.90
-      });
-
-      if (Array.isArray(app.technologies)) {
-        for (const tech of app.technologies) {
-          const tName = typeof tech === 'string' ? tech : tech.name;
-          if (!tName) continue;
-          await session.run(`
-            MATCH (a:Application {name: $appName})
-            MERGE (t:Technology {name: $techName})
-            SET t.isLegacy = $isLegacy
-            MERGE (a)-[:USES_TECH]->(t)
-          `, {
-            appName: app.name,
-            techName: tName,
-            isLegacy: Boolean(tech.isLegacy)
-          });
-        }
-      }
-
-      if (Array.isArray(app.dependencies)) {
-        for (const dep of app.dependencies) {
-          const depName = typeof dep === 'string' ? dep.trim() : dep.name;
-          if (!depName || depName.toLowerCase() === 'none') continue;
-          await session.run(`
-            MATCH (a:Application {name: $appName})
-            MERGE (depApp:Application {name: $depName})
-            MERGE (a)-[:DEPENDS_ON]->(depApp)
-          `, {
-            appName: app.name,
-            depName
-          });
-        }
-      }
-    }
-    return { success: true, count: analyzedApps.length };
-  } finally {
-    await session.close();
-  }
-}
-
-/**
- * Universal Multi-Domain Knowledge Graph Orchestrator
- */
-async function buildGraphFromExcel({ 
-  fileBuffer, 
-  rows, 
-  mode, // 'auto' | 'universal' | 'application'
-  llmConfig = {}, 
-  neo4jConfig = {}, 
-  onProgress = () => {} 
+async function buildGraphFromMultiFiles({
+  files = [],
+  rows = null,
+  mode = 'auto',
+  includeLineage = true,
+  resolveCrossFile = true,
+  llmConfig = {},
+  neo4jConfig = {},
+  onProgress = () => {}
 }) {
   const logs = [];
   const addLog = (stage, message, meta = {}) => {
@@ -334,188 +341,316 @@ async function buildGraphFromExcel({
     onProgress(entry);
   };
 
-  addLog('PARSE', 'Reading spreadsheet workbook and parsing tabular structure...');
-  let parsedRows = rows;
-  if (fileBuffer) {
-    const parsed = parseExcelBuffer(fileBuffer);
-    parsedRows = parsed.rows;
-  }
-
-  if (!parsedRows || parsedRows.length === 0) {
-    throw new Error('Spreadsheet is empty or contains no parseable rows.');
-  }
-
-  // Determine mode
-  const detectedDomain = mode && mode !== 'auto' ? mode : detectSpreadsheetDomain(parsedRows);
-  const isApplicationMode = detectedDomain === 'application';
-
-  addLog('DOMAIN_DETECT', `Identified spreadsheet type: ${isApplicationMode ? 'Application Portfolio Rationalization' : 'Universal Knowledge Graph (Any Domain)'}.`);
-  addLog('PARSE', `Discovered ${parsedRows.length} data records across ${Object.keys(parsedRows[0] || {}).length} columns.`);
+  addLog('INIT', `Starting Multi-File Ingestion Pipeline (${files.length || (rows ? 1 : 0)} files queued)...`);
+  addLog('CONFIG', `LLM Provider: ${llmConfig.provider.toUpperCase()} (${llmConfig.geminiModel || llmConfig.azureDeployment || 'Default'})`);
 
   const hasLlmKey = (llmConfig.provider === 'azure' && (llmConfig.azureApiKey || process.env.AZURE_OPENAI_API_KEY)) ||
-                     (llmConfig.provider === 'gemini' && (llmConfig.geminiApiKey || process.env.GEMINI_API_KEY));
+                    (llmConfig.provider === 'gemini' && (llmConfig.geminiApiKey || process.env.GEMINI_API_KEY));
 
-  // ==========================================
-  // CASE A: Universal Mode (Any Spreadsheet!)
-  // ==========================================
-  if (!isApplicationMode) {
-    addLog('LLM_EXTRACTION', `Starting Universal Graph Entity & Relationship Extraction using ${hasLlmKey ? llmConfig.provider.toUpperCase() : 'Universal Schema Extractor'}...`);
-    
-    let allNodes = [];
-    let allRelationships = [];
+  // If no files passed but raw rows passed (legacy single row upload)
+  let rawFiles = [...files];
+  if (rawFiles.length === 0 && rows) {
+    rawFiles = [{
+      originalname: 'spreadsheet_data.json',
+      buffer: Buffer.from(JSON.stringify(rows)),
+      size: JSON.stringify(rows).length
+    }];
+  }
 
-    if (hasLlmKey) {
-      try {
-        const chunkSize = 6;
-        for (let i = 0; i < parsedRows.length; i += chunkSize) {
-          const chunk = parsedRows.slice(i, i + chunkSize);
-          addLog('LLM_EXTRACTION', `Extracting entities & relations for records ${i + 1} to ${Math.min(i + chunkSize, parsedRows.length)}...`);
+  if (rawFiles.length === 0) {
+    throw new Error('No files provided for multi-file graph construction.');
+  }
 
-          const result = await llmService.generateCompletion({
-            systemPrompt: UNIVERSAL_GRAPH_PROMPT,
-            userPrompt: `Extract knowledge graph nodes and relationships from this data batch:\n\n${JSON.stringify(chunk, null, 2)}`,
+  const allDocNodes = [];
+  const allChunkNodes = [];
+  const allEntityNodesMap = new Map();
+  const allEdgesMap = new Map();
+  const docEntityIndex = new Map(); // docId -> Set of entityIds
+
+  let totalChunksCount = 0;
+  let totalRecordsCount = 0;
+
+  // Process each file
+  for (let fIdx = 0; fIdx < rawFiles.length; fIdx++) {
+    const file = rawFiles[fIdx];
+    const parsed = parseFile(file);
+    const docId = `doc_${parsed.fileName.replace(/[^a-zA-Z0-9]/g, '_')}`;
+    const chunks = chunkFile(parsed, 6);
+
+    totalChunksCount += chunks.length;
+    totalRecordsCount += (parsed.records ? parsed.records.length : 1);
+
+    addLog('FILE_PARSE', `[File ${fIdx + 1}/${rawFiles.length}: ${parsed.fileName}] Parsed ${(parsed.records ? `${parsed.records.length} records` : 'text content')} ➔ partitioned into ${chunks.length} chunks.`);
+
+    // 1. Document Node
+    const docNode = {
+      id: docId,
+      label: parsed.fileName,
+      category: 'Document',
+      name: parsed.fileName,
+      properties: {
+        fileName: parsed.fileName,
+        fileType: parsed.fileType,
+        fileSize: parsed.size,
+        totalChunks: chunks.length,
+        recordCount: parsed.records ? parsed.records.length : 1,
+        uploadedAt: new Date().toISOString()
+      }
+    };
+    allDocNodes.push(docNode);
+    docEntityIndex.set(docId, new Set());
+
+    // 2. Process each Chunk
+    let prevChunkId = null;
+    for (let cIdx = 0; cIdx < chunks.length; cIdx++) {
+      const chunk = chunks[cIdx];
+      addLog('CHUNKING', `[${parsed.fileName}] Extracting entities from Chunk ${cIdx + 1}/${chunks.length}...`);
+
+      let extracted = null;
+      if (hasLlmKey) {
+        try {
+          const userPrompt = `Extract knowledge graph metadata, entities, and relationships for Chunk ${cIdx + 1}/${chunks.length} of file "${parsed.fileName}":\n\n${chunk.fullText}`;
+          extracted = await llmService.generateCompletion({
+            systemPrompt: MULTI_FILE_CHUNK_PROMPT,
+            userPrompt,
             temperature: 0.1,
             jsonMode: true,
             config: llmConfig
           });
-
-          if (result && Array.isArray(result.nodes)) {
-            allNodes.push(...result.nodes);
-          }
-          if (result && Array.isArray(result.relationships)) {
-            allRelationships.push(...result.relationships);
-          }
+        } catch (err) {
+          addLog('WARNING', `LLM extraction note for chunk ${cIdx + 1}: ${err.message}. Applying heuristic extractor.`);
         }
-      } catch (err) {
-        addLog('WARNING', `LLM notice (${err.message}). Applied Universal Schema Extractor.`);
       }
-    }
 
-    // Fallback if LLM empty or not configured
-    if (allNodes.length === 0) {
-      addLog('SCHEMA_ENGINE', 'Analyzing column topology and linking entity nodes...');
-      const heuristic = heuristicUniversalParser(parsedRows);
-      allNodes = heuristic.nodes;
-      allRelationships = heuristic.relationships;
-    }
+      if (!extracted || !Array.isArray(extracted.nodes) || extracted.nodes.length === 0) {
+        extracted = heuristicChunkParser(chunk);
+      }
 
-    // Format nodes for Vis Network
-    const formattedNodes = allNodes.map(n => ({
-      id: n.id,
-      label: n.name || n.label || n.id,
-      category: n.label || 'Entity',
-      properties: n.properties || {}
-    }));
+      const meta = extracted.chunkMetadata || { summary: `Chunk ${cIdx + 1}`, keyTopics: [] };
 
-    const formattedEdges = allRelationships.map(r => ({
-      id: `${r.from}_${r.type}_${r.to}`,
-      from: r.from,
-      to: r.to,
-      label: r.type,
-      properties: r.properties || {}
-    }));
+      // Chunk Node
+      const chunkNode = {
+        id: chunk.id,
+        label: `Chunk ${cIdx + 1} (${parsed.fileName.slice(0, 15)})`,
+        category: 'Chunk',
+        name: `Chunk ${cIdx + 1}`,
+        properties: {
+          docId,
+          documentName: parsed.fileName,
+          chunkIndex: cIdx,
+          summary: meta.summary || '',
+          keyTopics: (meta.keyTopics || []).join(', '),
+          preview: chunk.previewText
+        }
+      };
+      allChunkNodes.push(chunkNode);
 
-    // Save in Universal Memory Store
-    neo4jService.saveUniversalGraph({
-      nodes: formattedNodes,
-      edges: formattedEdges,
-      rawRows: parsedRows
-    });
-
-    addLog('GRAPH_INGEST', `Injecting ${formattedNodes.length} nodes and ${formattedEdges.length} semantic relationships into Neo4j...`);
-    try {
-      await ingestUniversalToNeo4j(allNodes, allRelationships, neo4jConfig);
-      addLog('NEO4J_PERSIST', `Persisted graph directly into Neo4j Desktop DBMS.`);
-    } catch (neoErr) {
-      addLog('NOTICE', `Neo4j Desktop is offline (${neoErr.message}). Graph loaded into active Memory Preview.`);
-    }
-
-    const stats = await neo4jService.getGraphStats(neo4jConfig);
-    const graphData = await neo4jService.getGraphData(400, neo4jConfig);
-
-    addLog('COMPLETE', `Universal Knowledge Graph built successfully! Mapped ${stats.totalNodes || formattedNodes.length} nodes across ${stats.labels?.length || 'multiple'} entity categories.`);
-
-    return {
-      success: true,
-      mode: 'universal',
-      totalProcessed: parsedRows.length,
-      stats,
-      graphData,
-      logs
-    };
-  }
-
-  // ==========================================
-  // CASE B: Application Rationalization Mode
-  // ==========================================
-  addLog('INIT_NEO4J', 'Initializing Application Portfolio schema constraints...');
-  try {
-    await neo4jService.initConstraints(neo4jConfig);
-  } catch (err) {}
-
-  const chunkSize = 5;
-  const chunks = [];
-  for (let i = 0; i < parsedRows.length; i += chunkSize) {
-    chunks.push(parsedRows.slice(i, i + chunkSize));
-  }
-
-  const allAnalyzedApps = [];
-  for (let cIdx = 0; cIdx < chunks.length; cIdx++) {
-    const chunk = chunks[cIdx];
-    addLog('LLM_EXTRACTION', `Classifying application stack batch ${cIdx + 1}/${chunks.length}...`);
-
-    if (hasLlmKey) {
-      try {
-        const userPrompt = `Classify this application inventory batch into RETAIN, RETIRE, or OPTIMIZE:\n\n${JSON.stringify(chunk, null, 2)}`;
-        const result = await llmService.generateCompletion({
-          systemPrompt: APP_RATIONALIZATION_PROMPT,
-          userPrompt,
-          temperature: 0.1,
-          jsonMode: true,
-          config: llmConfig
+      // Lineage Link: Document -> Chunk
+      if (includeLineage) {
+        const docChunkEdgeId = `${docId}_HAS_CHUNK_${chunk.id}`;
+        allEdgesMap.set(docChunkEdgeId, {
+          id: docChunkEdgeId,
+          from: docId,
+          to: chunk.id,
+          type: 'HAS_CHUNK',
+          label: 'HAS_CHUNK',
+          properties: { index: cIdx }
         });
 
-        if (result && Array.isArray(result.applications)) {
-          allAnalyzedApps.push(...result.applications);
-        } else {
-          allAnalyzedApps.push(...llmService.heuristicApplicationAnalysis(chunk));
+        // Sequential Chaining: Chunk -> Next Chunk
+        if (prevChunkId) {
+          const nextEdgeId = `${prevChunkId}_NEXT_CHUNK_${chunk.id}`;
+          allEdgesMap.set(nextEdgeId, {
+            id: nextEdgeId,
+            from: prevChunkId,
+            to: chunk.id,
+            type: 'NEXT_CHUNK',
+            label: 'NEXT_CHUNK',
+            properties: {}
+          });
         }
-      } catch (err) {
-        allAnalyzedApps.push(...llmService.heuristicApplicationAnalysis(chunk));
       }
-    } else {
-      allAnalyzedApps.push(...llmService.heuristicApplicationAnalysis(chunk));
+      prevChunkId = chunk.id;
+
+      // Extracted Entity Nodes
+      (extracted.nodes || []).forEach(n => {
+        const entityId = n.id || `${n.label}_${n.name.replace(/[^a-zA-Z0-9]/g, '_')}`;
+        
+        // Track document provenance
+        if (!allEntityNodesMap.has(entityId)) {
+          allEntityNodesMap.set(entityId, {
+            id: entityId,
+            label: n.name || n.label || entityId,
+            category: n.label || 'Entity',
+            name: n.name || n.label || entityId,
+            properties: {
+              ...n.properties,
+              sourceDocuments: [parsed.fileName]
+            }
+          });
+        } else {
+          // Entity already exists from another chunk or file! Merge properties & provenance
+          const existing = allEntityNodesMap.get(entityId);
+          const srcDocs = new Set(existing.properties.sourceDocuments || []);
+          srcDocs.add(parsed.fileName);
+          existing.properties = {
+            ...existing.properties,
+            ...n.properties,
+            sourceDocuments: Array.from(srcDocs)
+          };
+        }
+
+        docEntityIndex.get(docId).add(entityId);
+
+        // Lineage Link: Chunk -> Extracted Entity
+        if (includeLineage) {
+          const chunkEntityEdgeId = `${chunk.id}_EXTRACTS_${entityId}`;
+          allEdgesMap.set(chunkEntityEdgeId, {
+            id: chunkEntityEdgeId,
+            from: chunk.id,
+            to: entityId,
+            type: 'EXTRACTS_ENTITY',
+            label: 'EXTRACTS',
+            properties: { sourceFile: parsed.fileName }
+          });
+        }
+      });
+
+      // Extracted Inter-Entity Relationships
+      (extracted.relationships || []).forEach(r => {
+        const relType = (r.type || 'RELATED_TO').toUpperCase().replace(/[^a-zA-Z0-9_]/g, '');
+        const edgeId = `${r.from}_${relType}_${r.to}`;
+        if (!allEdgesMap.has(edgeId)) {
+          allEdgesMap.set(edgeId, {
+            id: edgeId,
+            from: r.from,
+            to: r.to,
+            type: relType,
+            label: relType,
+            properties: {
+              ...(r.properties || {}),
+              sourceFile: parsed.fileName,
+              chunkId: chunk.id
+            }
+          });
+        }
+      });
     }
   }
 
-  neo4jService.saveToInMemoryStore(allAnalyzedApps);
+  // 3. Cross-File Entity Resolution & Document Connectivity
+  let crossFileLinksCount = 0;
+  if (resolveCrossFile && rawFiles.length > 1) {
+    addLog('CROSS_CONNECT', 'Analyzing multi-file entity overlap and establishing cross-file connections...');
 
-  addLog('GRAPH_INGEST', `Injecting ${allAnalyzedApps.length} applications and relationships into Neo4j graph database...`);
+    const docIds = Array.from(docEntityIndex.keys());
+    for (let i = 0; i < docIds.length; i++) {
+      for (let j = i + 1; j < docIds.length; j++) {
+        const docA = docIds[i];
+        const docB = docIds[j];
+        const setA = docEntityIndex.get(docA);
+        const setB = docEntityIndex.get(docB);
+
+        const sharedEntities = [];
+        setA.forEach(eId => {
+          if (setB.has(eId)) sharedEntities.push(eId);
+        });
+
+        if (sharedEntities.length > 0) {
+          crossFileLinksCount++;
+          const crossDocEdgeId = `${docA}_SHARES_${docB}`;
+          allEdgesMap.set(crossDocEdgeId, {
+            id: crossDocEdgeId,
+            from: docA,
+            to: docB,
+            type: 'SHARES_ENTITIES',
+            label: `SHARES (${sharedEntities.length})`,
+            properties: {
+              sharedCount: sharedEntities.length,
+              sharedEntities: sharedEntities.slice(0, 10)
+            }
+          });
+          addLog('CROSS_CONNECT', `Connected [${docA}] and [${docB}] via ${sharedEntities.length} shared entities (${sharedEntities.slice(0, 3).join(', ')}).`);
+        }
+      }
+    }
+  }
+
+  // Assemble all nodes for visualization and database
+  const combinedNodes = [
+    ...(includeLineage ? allDocNodes : []),
+    ...(includeLineage ? allChunkNodes : []),
+    ...Array.from(allEntityNodesMap.values())
+  ];
+
+  const combinedEdges = Array.from(allEdgesMap.values());
+
+  // Save to Universal In-Memory Store
+  neo4jService.saveUniversalGraph({
+    nodes: combinedNodes,
+    edges: combinedEdges,
+    rawRows: []
+  });
+
+  // Ingest to live Neo4j Desktop
+  addLog('NEO4J_PERSIST', `Injecting ${combinedNodes.length} nodes and ${combinedEdges.length} connections across ${rawFiles.length} files into Neo4j Desktop...`);
   try {
-    await ingestApplicationsToNeo4j(allAnalyzedApps, neo4jConfig);
-    addLog('NEO4J_PERSIST', `Persisted ${allAnalyzedApps.length} applications into Neo4j Desktop DBMS.`);
-  } catch (neoErr) {
-    addLog('NOTICE', `Neo4j Desktop is currently offline (${neoErr.message}). Loaded into active Memory Preview.`);
+    await ingestUniversalToNeo4j(combinedNodes, combinedEdges, neo4jConfig);
+    addLog('SUCCESS', `Multi-file Knowledge Graph successfully committed to Neo4j Desktop DBMS!`);
+  } catch (err) {
+    addLog('NOTICE', `Neo4j Desktop is offline (${err.message}). Active Memory Store ready with full multi-file graph.`);
   }
 
   const stats = await neo4jService.getGraphStats(neo4jConfig);
-  const graphData = await neo4jService.getGraphData(400, neo4jConfig);
+  const graphData = await neo4jService.getGraphData(600, neo4jConfig);
 
-  addLog('COMPLETE', `Application Portfolio Graph complete! ${stats.totalApps} applications mapped (${stats.retainCount} Retain, ${stats.retireCount} Retire, ${stats.optimizeCount} Optimize).`);
+  addLog('COMPLETE', `Pipeline finished! Processed ${rawFiles.length} files into ${totalChunksCount} chunks, mapping ${allEntityNodesMap.size} unique entities and ${combinedEdges.length} connections.`);
 
   return {
     success: true,
-    mode: 'application',
-    totalProcessed: allAnalyzedApps.length,
+    totalFiles: rawFiles.length,
+    totalChunks: totalChunksCount,
+    totalProcessed: totalRecordsCount,
+    totalEntities: allEntityNodesMap.size,
+    totalConnections: combinedEdges.length,
+    crossFileLinks: crossFileLinksCount,
+    documents: allDocNodes.map(d => ({
+      name: d.name,
+      chunks: d.properties.totalChunks,
+      size: d.properties.fileSize
+    })),
     stats,
     graphData,
-    logs,
-    applications: allAnalyzedApps
+    logs
   };
 }
 
+/**
+ * Backward compatibility wrapper for single Excel build
+ */
+async function buildGraphFromExcel(args) {
+  const { fileBuffer, rows, mode, llmConfig, neo4jConfig, onProgress } = args;
+  const files = [];
+  if (fileBuffer) {
+    files.push({
+      originalname: 'spreadsheet.xlsx',
+      buffer: fileBuffer,
+      size: fileBuffer.length
+    });
+  }
+  return buildGraphFromMultiFiles({
+    files,
+    rows,
+    mode,
+    llmConfig,
+    neo4jConfig,
+    onProgress
+  });
+}
+
 module.exports = {
+  buildGraphFromMultiFiles,
   buildGraphFromExcel,
-  parseExcelBuffer,
-  detectSpreadsheetDomain
+  parseFile,
+  chunkFile
 };
