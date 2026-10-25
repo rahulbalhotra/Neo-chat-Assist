@@ -20,12 +20,27 @@ function cleanAndParseJSON(rawText) {
     // Attempt regex extraction of first {...} or [...]
     const jsonMatch = text.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
     if (jsonMatch) {
+      const candidate = jsonMatch[0];
       try {
-        return JSON.parse(jsonMatch[0]);
-      } catch (e) {
-        throw new Error(`Failed to parse extracted JSON: ${e.message}\nRaw text: ${text.substring(0, 300)}...`);
+        return JSON.parse(candidate);
+      } catch (e1) {
+        try {
+          // Replace raw unescaped newlines inside strings
+          const sanitized = candidate.replace(/(?<=:\s*"[^"]*)\n(?=[^"]*")/g, '\\n');
+          return JSON.parse(sanitized);
+        } catch (e2) {}
       }
     }
+
+    // Attempt regex extraction for cypher
+    const cypherMatch = text.match(/"cypher"\s*:\s*"([\s\S]*?)"(?:\s*,\s*"explanation"\s*:\s*"([\s\S]*?)")?/);
+    if (cypherMatch) {
+      return {
+        cypher: cypherMatch[1].replace(/\\"/g, '"').replace(/\\n/g, '\n'),
+        explanation: cypherMatch[2] || 'Generated Cypher query'
+      };
+    }
+
     throw new Error(`Invalid JSON returned by LLM: ${err.message}\nRaw text: ${text.substring(0, 300)}...`);
   }
 }
@@ -34,16 +49,22 @@ function cleanAndParseJSON(rawText) {
  * Call Azure OpenAI Chat Completion API
  */
 async function callAzureOpenAI({ messages, temperature = 0.2, jsonMode = false, config }) {
-  const endpoint = (config.azureEndpoint || process.env.AZURE_OPENAI_ENDPOINT || '').replace(/\/$/, '');
+  let endpoint = (config.azureEndpoint || process.env.AZURE_OPENAI_ENDPOINT || '').trim().replace(/\/$/, '');
   const apiKey = config.azureApiKey || process.env.AZURE_OPENAI_API_KEY;
-  const deployment = config.azureDeployment || process.env.AZURE_OPENAI_DEPLOYMENT || 'gpt-4o';
+  const deployment = (config.azureDeployment || process.env.AZURE_OPENAI_DEPLOYMENT || 'gpt-4o').trim();
   const apiVersion = config.azureApiVersion || process.env.AZURE_OPENAI_API_VERSION || '2024-06-01';
 
   if (!endpoint || !apiKey) {
     throw new Error('Azure OpenAI configuration incomplete. Please provide Azure Endpoint and API Key.');
   }
 
-  const url = `${endpoint}/openai/deployments/${deployment}/chat/completions?api-version=${apiVersion}`;
+  // If user pasted a full URL with /openai/deployments..., normalize to origin
+  try {
+    const urlObj = new URL(endpoint);
+    endpoint = urlObj.origin;
+  } catch (e) {}
+
+  const url = `${endpoint}/openai/deployments/${encodeURIComponent(deployment)}/chat/completions?api-version=${apiVersion}`;
   
   const payload = {
     messages,
@@ -53,6 +74,11 @@ async function callAzureOpenAI({ messages, temperature = 0.2, jsonMode = false, 
 
   if (jsonMode) {
     payload.response_format = { type: 'json_object' };
+    // Azure OpenAI strictly requires the word 'json' in messages when json_object response format is active
+    const hasJsonWord = messages.some(m => /json/i.test(m.content));
+    if (!hasJsonWord) {
+      messages.unshift({ role: 'system', content: 'You must respond strictly in JSON format.' });
+    }
   }
 
   const response = await axios.post(url, payload, {

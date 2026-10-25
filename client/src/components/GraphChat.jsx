@@ -13,7 +13,29 @@ import {
   HelpCircle,
   Database
 } from 'lucide-react';
+import { marked } from 'marked';
 import { api } from '../services/api';
+
+// Configure marked options
+marked.setOptions({
+  gfm: true,
+  breaks: true
+});
+
+function renderMarkdown(text) {
+  if (!text) return '';
+  // Convert ***text*** into **_text_**
+  let sanitized = text.replace(/\*\*\*([^*]+)\*\*\*/g, '**_$1_**');
+  // Convert standalone triple asterisks into horizontal rules
+  sanitized = sanitized.replace(/^\s*\*{3,}(?:\s+\*{3,})*\s*$/gm, '---');
+  // Strip any stray *** prefixes
+  sanitized = sanitized.replace(/\*\*\*\s*/g, '**');
+  try {
+    return marked.parse(sanitized);
+  } catch (e) {
+    return text;
+  }
+}
 
 const SAMPLE_QUESTIONS = [
   "Which applications should we retire first to save maximum budget?",
@@ -169,10 +191,17 @@ export default function GraphChat({ config, onFocusApp }) {
               lineHeight: 1.6,
               boxShadow: 'var(--shadow-sm)'
             }}>
-              {/* Message text */}
-              <div style={{ whiteSpace: 'pre-wrap' }}>
-                {m.content}
-              </div>
+              {/* Message text with Markdown parsing */}
+              {m.role === 'user' ? (
+                <div style={{ whiteSpace: 'pre-wrap' }}>
+                  {m.content}
+                </div>
+              ) : (
+                <div 
+                  className="chat-markdown"
+                  dangerouslySetInnerHTML={{ __html: renderMarkdown(m.content) }} 
+                />
+              )}
 
               {/* Mentioned Apps to Spotlight */}
               {m.highlightApps && m.highlightApps.length > 0 && (
