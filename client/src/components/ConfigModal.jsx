@@ -365,9 +365,60 @@ export default function ConfigModal({ isOpen, onClose, config, onSaveConfig, onN
             </div>
           )}
 
-          {/* TAB 2: Neo4j Desktop Database */}
+          {/* TAB 2: Neo4j Database (Desktop or Cloud AuraDB) */}
           {activeTab === 'neo4j' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              
+              {/* Quick Connection Presets */}
+              <div style={{ display: 'flex', gap: '8px', background: '#f8fafc', padding: '6px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <button
+                  type="button"
+                  onClick={() => setForm(prev => ({
+                    ...prev,
+                    neo4jUri: 'bolt://localhost:7687',
+                    neo4jUsername: prev.neo4jUsername || 'neo4j',
+                    neo4jDatabase: 'neo4j'
+                  }))}
+                  style={{
+                    flex: 1,
+                    padding: '8px 12px',
+                    fontSize: '0.8rem',
+                    fontWeight: (!form.neo4jUri || form.neo4jUri.startsWith('bolt')) ? '600' : '400',
+                    background: (!form.neo4jUri || form.neo4jUri.startsWith('bolt')) ? '#ffffff' : 'transparent',
+                    color: (!form.neo4jUri || form.neo4jUri.startsWith('bolt')) ? '#008cc1' : '#64748b',
+                    borderRadius: '6px',
+                    border: (!form.neo4jUri || form.neo4jUri.startsWith('bolt')) ? '1px solid #bae6fd' : 'none',
+                    cursor: 'pointer',
+                    boxShadow: (!form.neo4jUri || form.neo4jUri.startsWith('bolt')) ? '0 1px 3px rgba(0,0,0,0.05)' : 'none'
+                  }}
+                >
+                  Local Neo4j Desktop
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setForm(prev => ({
+                    ...prev,
+                    neo4jUri: prev.neo4jUri?.startsWith('neo4j+s://') ? prev.neo4jUri : 'neo4j+s://your-instance.databases.neo4j.io',
+                    neo4jUsername: prev.neo4jUsername || 'neo4j',
+                    neo4jDatabase: 'neo4j'
+                  }))}
+                  style={{
+                    flex: 1,
+                    padding: '8px 12px',
+                    fontSize: '0.8rem',
+                    fontWeight: (form.neo4jUri && form.neo4jUri.startsWith('neo4j+s')) ? '600' : '400',
+                    background: (form.neo4jUri && form.neo4jUri.startsWith('neo4j+s')) ? '#ffffff' : 'transparent',
+                    color: (form.neo4jUri && form.neo4jUri.startsWith('neo4j+s')) ? '#008cc1' : '#64748b',
+                    borderRadius: '6px',
+                    border: (form.neo4jUri && form.neo4jUri.startsWith('neo4j+s')) ? '1px solid #bae6fd' : 'none',
+                    cursor: 'pointer',
+                    boxShadow: (form.neo4jUri && form.neo4jUri.startsWith('neo4j+s')) ? '0 1px 3px rgba(0,0,0,0.05)' : 'none'
+                  }}
+                >
+                  Cloud Neo4j AuraDB
+                </button>
+              </div>
+
               <div style={{
                 background: '#f0f9ff',
                 border: '1px solid #bae6fd',
@@ -380,24 +431,23 @@ export default function ConfigModal({ isOpen, onClose, config, onSaveConfig, onN
               }}>
                 <HelpCircle size={18} color="#008cc1" style={{ flexShrink: 0, marginTop: '2px' }} />
                 <div>
-                  <strong style={{ color: '#0f172a' }}>Connecting to Neo4j Desktop:</strong>
-                  <p style={{ marginTop: '3px' }}>
-                    1. Open your <strong>Neo4j Desktop</strong> application.<br/>
-                    2. Select your Project and click <strong>Start</strong> on your DBMS.<br/>
-                    3. Check the Bolt port (usually <code>bolt://localhost:7687</code>) and enter your DBMS password.
+                  <strong style={{ color: '#0f172a' }}>Connection Instructions:</strong>
+                  <p style={{ marginTop: '3px', lineHeight: 1.5 }}>
+                    • <strong>Cloud Neo4j AuraDB:</strong> Copy your connection URI from the Aura Console (e.g. <code>neo4j+s://&lt;dbid&gt;.databases.neo4j.io</code>). Enter username <code>neo4j</code> and your instance password.<br/>
+                    • <strong>Local Neo4j Desktop:</strong> Use <code>bolt://localhost:7687</code> with your local DBMS password.
                   </p>
                 </div>
               </div>
 
               <div>
                 <label style={{ fontSize: '0.8rem', color: '#334155', fontWeight: '500', display: 'block', marginBottom: '6px' }}>
-                  Neo4j Bolt URI
+                  Neo4j Connection URI (Bolt or AuraDB)
                 </label>
                 <input
                   id="input-neo4j-uri"
                   type="text"
-                  placeholder="bolt://localhost:7687"
-                  value={form.neo4jUri || 'bolt://localhost:7687'}
+                  placeholder="neo4j+s://<dbid>.databases.neo4j.io or bolt://localhost:7687"
+                  value={form.neo4jUri || ''}
                   onChange={(e) => setForm({ ...form, neo4jUri: e.target.value })}
                   style={{ width: '100%', background: '#ffffff', borderColor: '#cbd5e1' }}
                 />
@@ -472,7 +522,11 @@ export default function ConfigModal({ isOpen, onClose, config, onSaveConfig, onN
                 disabled={testingNeo4j}
                 style={{ alignSelf: 'flex-start' }}
               >
-                {testingNeo4j ? 'Connecting to Neo4j...' : 'Test Neo4j Desktop Connection'}
+                {testingNeo4j 
+                  ? 'Connecting to Neo4j...' 
+                  : (form.neo4jUri && form.neo4jUri.startsWith('neo4j+s'))
+                    ? 'Test Cloud AuraDB Connection'
+                    : 'Test Neo4j Connection'}
               </button>
             </div>
           )}

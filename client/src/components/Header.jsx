@@ -21,6 +21,8 @@ export default function Header({
   loading 
 }) {
   const isAzure = config.provider === 'azure';
+  const isAura = Boolean(config.neo4jUri && (config.neo4jUri.startsWith('neo4j+s://') || config.neo4jUri.includes('databases.neo4j.io')));
+  const dbLabel = isAura ? 'Neo4j AuraDB (Cloud)' : 'Neo4j Desktop';
 
   return (
     <header className="glass-panel" style={{ margin: '16px 24px 0 24px', padding: '14px 24px', background: '#ffffff' }}>
@@ -46,11 +48,11 @@ export default function Header({
                 Enterprise Graph Architect
               </h1>
               <span className="badge badge-neo4j" style={{ fontSize: '0.65rem' }}>
-                Neo4j Desktop
+                {dbLabel}
               </span>
             </div>
             <p style={{ fontSize: '0.8rem', color: '#64748b' }}>
-              LLM Application Portfolio Rationalization (Retain • Retire • Optimize)
+              Universal Knowledge Graph & LLM Graph Intelligence
             </p>
           </div>
         </div>
@@ -113,7 +115,7 @@ export default function Header({
           <div 
             id="neo4j-status-pill"
             onClick={onOpenSettings}
-            title={neo4jStatus?.connected ? `Connected to ${neo4jStatus.server || 'Neo4j Desktop'}` : `Disconnected: ${neo4jStatus?.error || 'Click to configure Neo4j Desktop'}`}
+            title={neo4jStatus?.connected ? `Connected to ${neo4jStatus.server || dbLabel}` : `Disconnected: ${neo4jStatus?.error || `Click to configure ${dbLabel}`}`}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -129,7 +131,7 @@ export default function Header({
             <Database size={14} color={neo4jStatus?.connected ? '#059669' : '#dc2626'} />
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               <span style={{ fontWeight: '600', color: neo4jStatus?.connected ? '#047857' : '#b91c1c' }}>
-                {neo4jStatus?.connected ? 'Neo4j Desktop Online' : 'Neo4j Offline'}
+                {neo4jStatus?.connected ? `${dbLabel} Online` : `${dbLabel} Offline`}
               </span>
               <span style={{ fontSize: '0.68rem', color: '#64748b' }}>
                 {config.neo4jUri || 'bolt://localhost:7687'}
