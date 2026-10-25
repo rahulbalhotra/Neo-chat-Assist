@@ -114,11 +114,16 @@ app.post('/api/graph/clear', async (req, res) => {
 
 // Download sample Excel file
 app.get('/api/sample-excel', (req, res) => {
-  const samplePath = path.join(__dirname, '..', 'sampleData', 'enterprise_application_stack.xlsx');
+  const type = req.query.type || 'applications';
+  let filename = 'enterprise_application_stack.xlsx';
+  if (type === 'supply_chain') filename = 'supply_chain_logistics.xlsx';
+  if (type === 'healthcare') filename = 'healthcare_clinical_network.xlsx';
+
+  const samplePath = path.join(__dirname, '..', 'sampleData', filename);
   if (fs.existsSync(samplePath)) {
-    res.download(samplePath, 'enterprise_application_stack.xlsx');
+    res.download(samplePath, filename);
   } else {
-    res.status(404).json({ error: 'Sample Excel not found. Run generator first.' });
+    res.status(404).json({ error: `Sample file ${filename} not found.` });
   }
 });
 
@@ -128,9 +133,14 @@ app.post('/api/graph/build', upload.single('file'), async (req, res) => {
     const { llmConfig, neo4jConfig } = getConfigs(req);
     let fileBuffer = req.file ? req.file.buffer : null;
 
-    // Check if user requested the built-in sample portfolio
+    // Check if user requested a built-in sample
     if (!fileBuffer && req.body.useSample === 'true') {
-      const samplePath = path.join(__dirname, '..', 'sampleData', 'enterprise_application_stack.xlsx');
+      const sampleType = req.body.sampleType || 'applications';
+      let filename = 'enterprise_application_stack.xlsx';
+      if (sampleType === 'supply_chain') filename = 'supply_chain_logistics.xlsx';
+      if (sampleType === 'healthcare') filename = 'healthcare_clinical_network.xlsx';
+
+      const samplePath = path.join(__dirname, '..', 'sampleData', filename);
       if (fs.existsSync(samplePath)) {
         fileBuffer = fs.readFileSync(samplePath);
       }
@@ -143,6 +153,7 @@ app.post('/api/graph/build', upload.single('file'), async (req, res) => {
     const result = await graphBuilderService.buildGraphFromExcel({
       fileBuffer,
       rows: req.body.rows ? JSON.parse(req.body.rows) : null,
+      mode: req.body.mode || 'auto',
       llmConfig,
       neo4jConfig
     });

@@ -6,12 +6,20 @@ import {
   Zap, 
   DollarSign, 
   TrendingDown, 
-  Server,
-  Building
+  Network,
+  Share2,
+  Tag,
+  GitFork,
+  Globe
 } from 'lucide-react';
 
 export default function PortfolioSummary({ stats }) {
+  const totalNodes = stats?.totalNodes || 0;
+  const totalEdges = stats?.totalEdges || 0;
   const totalApps = stats?.totalApps || 0;
+  const labels = stats?.labels || [];
+  const relTypes = stats?.relTypes || [];
+
   const retainCount = stats?.retainCount || 0;
   const retireCount = stats?.retireCount || 0;
   const optimizeCount = stats?.optimizeCount || 0;
@@ -30,6 +38,158 @@ export default function PortfolioSummary({ stats }) {
     return `$${(val / 1000).toFixed(0)}k`;
   };
 
+  // If we have an IT Application Portfolio, show strategic rationalization cards
+  const isAppPortfolio = totalApps > 0;
+
+  if (!isAppPortfolio) {
+    // UNIVERSAL KNOWLEDGE GRAPH KPI CARDS
+    return (
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+        gap: '16px',
+        margin: '16px 24px 0 24px'
+      }}>
+        {/* 1. Total Nodes */}
+        <div className="glass-panel" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '14px', background: '#ffffff' }}>
+          <div style={{
+            width: '44px',
+            height: '44px',
+            borderRadius: '10px',
+            background: '#e0f2fe',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            border: '1px solid #bae6fd'
+          }}>
+            <Network size={22} color="#008cc1" />
+          </div>
+          <div>
+            <div style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', fontWeight: '600' }}>
+              Universal Graph Nodes
+            </div>
+            <div style={{ fontSize: '1.5rem', fontWeight: '800', color: '#0f172a', lineHeight: 1.2 }}>
+              {totalNodes}
+            </div>
+            <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
+              Extracted Entities
+            </div>
+          </div>
+        </div>
+
+        {/* 2. Total Relationships */}
+        <div className="glass-panel" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '14px', background: '#ffffff' }}>
+          <div style={{
+            width: '44px',
+            height: '44px',
+            borderRadius: '10px',
+            background: '#ecfdf5',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            border: '1px solid #a7f3d0'
+          }}>
+            <Share2 size={22} color="#059669" />
+          </div>
+          <div>
+            <div style={{ fontSize: '0.75rem', color: '#059669', textTransform: 'uppercase', fontWeight: '600' }}>
+              Relationships
+            </div>
+            <div style={{ fontSize: '1.5rem', fontWeight: '800', color: '#0f172a', lineHeight: 1.2 }}>
+              {totalEdges}
+            </div>
+            <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
+              Directed Semantic Edges
+            </div>
+          </div>
+        </div>
+
+        {/* 3. Entity Types / Labels */}
+        <div className="glass-panel" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '14px', background: '#ffffff' }}>
+          <div style={{
+            width: '44px',
+            height: '44px',
+            borderRadius: '10px',
+            background: '#f5f3ff',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            border: '1px solid #ddd6fe'
+          }}>
+            <Tag size={22} color="#7c3aed" />
+          </div>
+          <div>
+            <div style={{ fontSize: '0.75rem', color: '#7c3aed', textTransform: 'uppercase', fontWeight: '600' }}>
+              Entity Categories
+            </div>
+            <div style={{ fontSize: '1.5rem', fontWeight: '800', color: '#0f172a', lineHeight: 1.2 }}>
+              {labels.length}
+            </div>
+            <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px' }}>
+              {labels.slice(0, 3).join(', ')}{labels.length > 3 ? '...' : ''}
+            </div>
+          </div>
+        </div>
+
+        {/* 4. Relationship Types */}
+        <div className="glass-panel" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '14px', background: '#ffffff' }}>
+          <div style={{
+            width: '44px',
+            height: '44px',
+            borderRadius: '10px',
+            background: '#fffbeb',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            border: '1px solid #fde68a'
+          }}>
+            <GitFork size={22} color="#d97706" />
+          </div>
+          <div>
+            <div style={{ fontSize: '0.75rem', color: '#d97706', textTransform: 'uppercase', fontWeight: '600' }}>
+              Relationship Types
+            </div>
+            <div style={{ fontSize: '1.5rem', fontWeight: '800', color: '#0f172a', lineHeight: 1.2 }}>
+              {relTypes.length}
+            </div>
+            <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px' }}>
+              {relTypes.slice(0, 2).join(', ')}{relTypes.length > 2 ? '...' : ''}
+            </div>
+          </div>
+        </div>
+
+        {/* 5. Mode Indicator */}
+        <div className="glass-panel" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '14px', background: '#ffffff' }}>
+          <div style={{
+            width: '44px',
+            height: '44px',
+            borderRadius: '10px',
+            background: '#f8fafc',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            border: '1px solid #e2e8f0'
+          }}>
+            <Globe size={22} color="#008cc1" />
+          </div>
+          <div>
+            <div style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', fontWeight: '600' }}>
+              Knowledge Graph
+            </div>
+            <div style={{ fontSize: '1.15rem', fontWeight: '700', color: '#008cc1', lineHeight: 1.2 }}>
+              Universal
+            </div>
+            <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
+              Arbitrary Excel Graph
+            </div>
+          </div>
+        </div>
+
+      </div>
+    );
+  }
+
+  // IT APPLICATION PORTFOLIO CARDS
   return (
     <div style={{
       display: 'grid',
@@ -60,7 +220,7 @@ export default function PortfolioSummary({ stats }) {
             {totalApps}
           </div>
           <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
-            {stats?.totalDepts || 0} Departments • {stats?.totalTech || 0} Tech Stacks
+            {stats?.totalDepts || labels.length} Categories • {totalEdges} Relations
           </div>
         </div>
       </div>

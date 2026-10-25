@@ -8,12 +8,13 @@ let currentConfig = {
   database: process.env.NEO4J_DATABASE || 'neo4j'
 };
 
-// In-Memory Fallback Cache if Neo4j Desktop is temporarily offline
+// In-Memory Fallback Cache for ANY Graph
 let inMemoryStore = {
   nodes: [],
   edges: [],
   applications: [],
-  hasData: false
+  hasData: false,
+  mode: 'universal' // 'universal' | 'application'
 };
 
 function getDriver(overrideConfig = {}) {
@@ -69,9 +70,7 @@ async function initConstraints(config = {}) {
         'CREATE CONSTRAINT application_name_unique IF NOT EXISTS FOR (a:Application) REQUIRE a.name IS UNIQUE',
         'CREATE CONSTRAINT classification_name_unique IF NOT EXISTS FOR (c:Classification) REQUIRE c.name IS UNIQUE',
         'CREATE CONSTRAINT department_name_unique IF NOT EXISTS FOR (d:Department) REQUIRE d.name IS UNIQUE',
-        'CREATE CONSTRAINT tech_name_unique IF NOT EXISTS FOR (t:Technology) REQUIRE t.name IS UNIQUE',
-        'CREATE CONSTRAINT vendor_name_unique IF NOT EXISTS FOR (v:Vendor) REQUIRE v.name IS UNIQUE',
-        'CREATE CONSTRAINT platform_name_unique IF NOT EXISTS FOR (p:Platform) REQUIRE p.name IS UNIQUE'
+        'CREATE CONSTRAINT tech_name_unique IF NOT EXISTS FOR (t:Technology) REQUIRE t.name IS UNIQUE'
       ];
       for (const cypher of constraints) {
         try {
@@ -83,7 +82,6 @@ async function initConstraints(config = {}) {
       await session.close();
     }
   } catch (err) {
-    // Neo4j offline
     return { success: false, offline: true, error: err.message };
   }
 }
@@ -117,7 +115,6 @@ async function executeCypher(query, params = {}, config = {}) {
       await session.close();
     }
   } catch (error) {
-    // If Neo4j is offline, check if we can query from in-memory store
     if (inMemoryStore.hasData) {
       const fallbackRecords = queryInMemoryStore(query);
       return { success: true, records: fallbackRecords, inMemory: true };
@@ -128,70 +125,87 @@ async function executeCypher(query, params = {}, config = {}) {
 
 function queryInMemoryStore(query) {
   const upper = query.toUpperCase();
+  const nodes = inMemoryStore.nodes || [];
+  const edges = inMemoryStore.edges || [];
   const apps = inMemoryStore.applications || [];
 
-  if (upper.includes("RETIRE")) {
-    return apps
-      .filter(a => a.classification === 'RETIRE')
-      .map(a => ({
-        application: a.name,
-        annualCost: a.annualCost,
-        health: a.architectureHealth,
-        rationale: a.rationale,
-        actionPlan: a.actionPlan,
-        department: a.department,
-        classification: 'RETIRE'
-      }))
-      .sort((a, b) => b.annualCost - a.annualCost);
+  if (apps.length > 0) {
+    if (upper.includes("RETIRE")) {
+      return apps
+        .filter(a => a.classification === 'RETIRE')
+        .map(a => ({
+          application: a.name,
+          annualCost: a.annualCost,
+          health: a.architectureHealth,
+          rationale: a.rationale,
+          actionPlan: a.actionPlan,
+          department: a.department,
+          classification: 'RETIRE'
+        }))
+        .sort((a, b) => b.annualCost - a.annualCost);
+    }
+
+    if (upper.includes("OPTIMIZE")) {
+      return apps
+        .filter(a => a.classification === 'OPTIMIZE')
+        .map(a => ({
+          application: a.name,
+          annualCost: a.annualCost,
+          cloudReadiness: a.cloudReadiness,
+          hosting: a.hosting,
+          rationale: a.rationale,
+          actionPlan: a.actionPlan,
+          department: a.department,
+          classification: 'OPTIMIZE'
+        }))
+        .sort((a, b) => b.annualCost - a.annualCost);
+    }
+
+    if (upper.includes("RETAIN")) {
+      return apps
+        .filter(a => a.classification === 'RETAIN')
+        .map(a => ({
+          application: a.name,
+          annualCost: a.annualCost,
+          criticality: a.businessCriticality,
+          users: a.activeUsers,
+          department: a.department,
+          rationale: a.rationale,
+          classification: 'RETAIN'
+        }))
+        .sort((a, b) => b.users - a.users);
+    }
   }
 
-  if (upper.includes("OPTIMIZE")) {
-    return apps
-      .filter(a => a.classification === 'OPTIMIZE')
-      .map(a => ({
-        application: a.name,
-        annualCost: a.annualCost,
-        cloudReadiness: a.cloudReadiness,
-        hosting: a.hosting,
-        rationale: a.rationale,
-        actionPlan: a.actionPlan,
-        department: a.department,
-        classification: 'OPTIMIZE'
-      }))
-      .sort((a, b) => b.annualCost - a.annualCost);
-  }
-
-  if (upper.includes("RETAIN")) {
-    return apps
-      .filter(a => a.classification === 'RETAIN')
-      .map(a => ({
-        application: a.name,
-        annualCost: a.annualCost,
-        criticality: a.businessCriticality,
-        users: a.activeUsers,
-        department: a.department,
-        rationale: a.rationale,
-        classification: 'RETAIN'
-      }))
-      .sort((a, b) => b.users - a.users);
-  }
-
-  // Default return top applications
-  return apps.map(a => ({
-    application: a.name,
-    classification: a.classification,
-    annualCost: a.annualCost,
-    department: a.department,
-    criticality: a.businessCriticality,
-    rationale: a.rationale
-  })).sort((a, b) => b.annualCost - a.annualCost);
+  // Universal query fallback: return nodes and connections
+  return nodes.slice(0, 25).map(n => ({
+    name: n.label,
+    category: n.category,
+    properties: n.properties,
+    connectedRelationships: edges.filter(e => e.from === n.id || e.to === n.id).map(e => `${e.from} -[${e.label}]-> ${e.to}`)
+  }));
 }
 
+/**
+ * Universal Store Saver for ANY graph
+ */
+function saveUniversalGraph({ nodes = [], edges = [], rawRows = [] }) {
+  inMemoryStore = {
+    nodes,
+    edges,
+    applications: [],
+    hasData: true,
+    mode: 'universal'
+  };
+}
+
+/**
+ * Specialized Store Saver for Application Portfolio
+ */
 function saveToInMemoryStore(analyzedApps) {
   const nodesMap = new Map();
   const edgesMap = new Map();
 
-  // Add classification hubs
   nodesMap.set('RETAIN', {
     id: 'RETAIN',
     label: 'RETAIN',
@@ -233,7 +247,6 @@ function saveToInMemoryStore(analyzedApps) {
       }
     });
 
-    // Edge to classification
     if (app.classification) {
       const edgeId = `${appId}_CLASSIFIED_AS_${app.classification}`;
       edgesMap.set(edgeId, {
@@ -245,7 +258,6 @@ function saveToInMemoryStore(analyzedApps) {
       });
     }
 
-    // Department node & edge
     if (app.department) {
       const deptId = `dept_${app.department.replace(/[^a-zA-Z0-9]/g, '_')}`;
       if (!nodesMap.has(deptId)) {
@@ -265,7 +277,6 @@ function saveToInMemoryStore(analyzedApps) {
       });
     }
 
-    // Technology nodes & edges
     if (Array.isArray(app.technologies)) {
       app.technologies.forEach(t => {
         const tName = typeof t === 'string' ? t : t.name;
@@ -289,7 +300,6 @@ function saveToInMemoryStore(analyzedApps) {
       });
     }
 
-    // Dependencies
     if (Array.isArray(app.dependencies)) {
       app.dependencies.forEach(depName => {
         if (!depName || depName.toLowerCase() === 'none') return;
@@ -317,20 +327,23 @@ function saveToInMemoryStore(analyzedApps) {
     nodes: Array.from(nodesMap.values()),
     edges: Array.from(edgesMap.values()),
     applications: analyzedApps,
-    hasData: true
+    hasData: true,
+    mode: 'application'
   };
 }
 
-async function getGraphData(limit = 350, config = {}) {
+/**
+ * Universal Graph Data Fetcher (Matches ANY labels in Neo4j)
+ */
+async function getGraphData(limit = 400, config = {}) {
   try {
     const { driver, database } = getDriver(config);
     const session = driver.session({ database });
     try {
+      // UNIVERSAL QUERY: matches ANY nodes and ANY relationships in database
       const query = `
         MATCH (n)
-        WHERE n:Application OR n:Classification OR n:Department OR n:Technology OR n:Vendor OR n:Platform
         OPTIONAL MATCH (n)-[r]->(m)
-        WHERE m:Application OR m:Classification OR m:Department OR m:Technology OR m:Vendor OR m:Platform
         RETURN n, r, m
         LIMIT $limit
       `;
@@ -345,12 +358,12 @@ async function getGraphData(limit = 350, config = {}) {
         const m = record.get('m');
 
         if (n) {
-          const id = n.elementId || (n.identity ? n.identity.toString() : n.properties.name);
+          const id = n.elementId || (n.identity ? n.identity.toString() : n.properties.id || n.properties.name);
           if (!nodesMap.has(id)) {
-            const label = n.labels ? n.labels[0] : 'Node';
+            const label = n.labels && n.labels.length > 0 ? n.labels[0] : 'Node';
             nodesMap.set(id, {
               id,
-              label: n.properties.name || id,
+              label: n.properties.name || n.properties.title || n.properties.id || id,
               category: label,
               properties: n.properties
             });
@@ -358,12 +371,12 @@ async function getGraphData(limit = 350, config = {}) {
         }
 
         if (m) {
-          const id = m.elementId || (m.identity ? m.identity.toString() : m.properties.name);
+          const id = m.elementId || (m.identity ? m.identity.toString() : m.properties.id || m.properties.name);
           if (!nodesMap.has(id)) {
-            const label = m.labels ? m.labels[0] : 'Node';
+            const label = m.labels && m.labels.length > 0 ? m.labels[0] : 'Node';
             nodesMap.set(id, {
               id,
-              label: m.properties.name || id,
+              label: m.properties.name || m.properties.title || m.properties.id || id,
               category: label,
               properties: m.properties
             });
@@ -371,8 +384,8 @@ async function getGraphData(limit = 350, config = {}) {
         }
 
         if (r && n && m) {
-          const fromId = n.elementId || (n.identity ? n.identity.toString() : n.properties.name);
-          const toId = m.elementId || (m.identity ? m.identity.toString() : m.properties.name);
+          const fromId = n.elementId || (n.identity ? n.identity.toString() : n.properties.id || n.properties.name);
+          const toId = m.elementId || (m.identity ? m.identity.toString() : m.properties.id || m.properties.name);
           const edgeId = r.elementId || `${fromId}_${r.type}_${toId}`;
           if (!edgesMap.has(edgeId)) {
             edgesMap.set(edgeId, {
@@ -396,11 +409,8 @@ async function getGraphData(limit = 350, config = {}) {
     } finally {
       await session.close();
     }
-  } catch (err) {
-    // If Neo4j query fails, fallback to in-memory store
-  }
+  } catch (err) {}
 
-  // Return in-memory fallback
   return {
     nodes: inMemoryStore.nodes || [],
     edges: inMemoryStore.edges || [],
@@ -408,37 +418,58 @@ async function getGraphData(limit = 350, config = {}) {
   };
 }
 
+/**
+ * Universal Graph Stats (Counts nodes, relationships, and distinct labels)
+ */
 async function getGraphStats(config = {}) {
   try {
     const { driver, database } = getDriver(config);
     const session = driver.session({ database });
     try {
       const statsQuery = `
-        OPTIONAL MATCH (a:Application)
-        WITH count(a) AS totalApps, sum(coalesce(a.annualCost, 0)) AS totalCost
-        OPTIONAL MATCH (retainApp:Application)-[:CLASSIFIED_AS]->(:Classification {name: 'RETAIN'})
-        WITH totalApps, totalCost, count(retainApp) AS retainCount
-        OPTIONAL MATCH (retireApp:Application)-[:CLASSIFIED_AS]->(:Classification {name: 'RETIRE'})
-        WITH totalApps, totalCost, retainCount, count(retireApp) AS retireCount, sum(coalesce(retireApp.annualCost, 0)) AS retireSavings
-        OPTIONAL MATCH (optApp:Application)-[:CLASSIFIED_AS]->(:Classification {name: 'OPTIMIZE'})
-        WITH totalApps, totalCost, retainCount, retireCount, retireSavings, count(optApp) AS optimizeCount
-        OPTIONAL MATCH (t:Technology)
-        WITH totalApps, totalCost, retainCount, retireCount, retireSavings, optimizeCount, count(t) AS totalTech
-        OPTIONAL MATCH (d:Department)
-        RETURN totalApps, totalCost, retainCount, retireCount, optimizeCount, retireSavings, totalTech, count(d) AS totalDepts
+        CALL {
+          MATCH (n) RETURN count(n) AS totalNodes
+        }
+        CALL {
+          MATCH ()-[r]->() RETURN count(r) AS totalEdges
+        }
+        CALL {
+          OPTIONAL MATCH (a:Application) RETURN count(a) AS totalApps, sum(coalesce(a.annualCost, 0)) AS totalCost
+        }
+        CALL {
+          OPTIONAL MATCH (retainApp:Application)-[:CLASSIFIED_AS]->(:Classification {name: 'RETAIN'})
+          RETURN count(retainApp) AS retainCount
+        }
+        CALL {
+          OPTIONAL MATCH (retireApp:Application)-[:CLASSIFIED_AS]->(:Classification {name: 'RETIRE'})
+          RETURN count(retireApp) AS retireCount, sum(coalesce(retireApp.annualCost, 0)) AS retireSavings
+        }
+        CALL {
+          OPTIONAL MATCH (optApp:Application)-[:CLASSIFIED_AS]->(:Classification {name: 'OPTIMIZE'})
+          RETURN count(optApp) AS optimizeCount
+        }
+        CALL {
+          CALL db.labels() YIELD label RETURN collect(label) AS labels
+        }
+        CALL {
+          CALL db.relationshipTypes() YIELD relationshipType RETURN collect(relationshipType) AS relTypes
+        }
+        RETURN totalNodes, totalEdges, totalApps, totalCost, retainCount, retireCount, optimizeCount, retireSavings, labels, relTypes
       `;
       const result = await session.run(statsQuery);
       const rec = result.records[0];
-      if (rec && rec.get('totalApps') > 0) {
+      if (rec && rec.get('totalNodes') > 0) {
         return {
-          totalApps: rec.get('totalApps'),
-          totalCost: rec.get('totalCost'),
-          retainCount: rec.get('retainCount'),
-          retireCount: rec.get('retireCount'),
-          optimizeCount: rec.get('optimizeCount'),
-          retireSavings: rec.get('retireSavings'),
-          totalTech: rec.get('totalTech'),
-          totalDepts: rec.get('totalDepts')
+          totalNodes: rec.get('totalNodes'),
+          totalEdges: rec.get('totalEdges'),
+          totalApps: rec.get('totalApps') || 0,
+          totalCost: rec.get('totalCost') || 0,
+          retainCount: rec.get('retainCount') || 0,
+          retireCount: rec.get('retireCount') || 0,
+          optimizeCount: rec.get('optimizeCount') || 0,
+          retireSavings: rec.get('retireSavings') || 0,
+          labels: rec.get('labels') || [],
+          relTypes: rec.get('relTypes') || []
         };
       }
     } finally {
@@ -446,35 +477,72 @@ async function getGraphStats(config = {}) {
     }
   } catch (err) {}
 
-  // Compute from in-memory store
+  // Fallback to in-memory stats
+  const nodes = inMemoryStore.nodes || [];
+  const edges = inMemoryStore.edges || [];
   const apps = inMemoryStore.applications || [];
+
+  const labels = Array.from(new Set(nodes.map(n => n.category).filter(Boolean)));
+  const relTypes = Array.from(new Set(edges.map(e => e.label).filter(Boolean)));
+
   const retainApps = apps.filter(a => a.classification === 'RETAIN');
   const retireApps = apps.filter(a => a.classification === 'RETIRE');
   const optimizeApps = apps.filter(a => a.classification === 'OPTIMIZE');
-
   const totalCost = apps.reduce((sum, a) => sum + (Number(a.annualCost) || 0), 0);
   const retireSavings = retireApps.reduce((sum, a) => sum + (Number(a.annualCost) || 0), 0);
 
-  const depts = new Set(apps.map(a => a.department).filter(Boolean));
-  const techs = new Set();
-  apps.forEach(a => {
-    (a.technologies || []).forEach(t => techs.add(typeof t === 'string' ? t : t.name));
-  });
-
   return {
+    totalNodes: nodes.length,
+    totalEdges: edges.length,
     totalApps: apps.length,
     totalCost,
     retainCount: retainApps.length,
     retireCount: retireApps.length,
     optimizeCount: optimizeApps.length,
     retireSavings,
-    totalTech: techs.size,
-    totalDepts: depts.size
+    labels,
+    relTypes
+  };
+}
+
+/**
+ * Universal Dynamic Schema Inspector for Chat with Graph
+ */
+async function getSchema(config = {}) {
+  try {
+    const { driver, database } = getDriver(config);
+    const session = driver.session({ database });
+    try {
+      const nodeLabelsResult = await session.run('CALL db.labels() YIELD label RETURN label');
+      const labels = nodeLabelsResult.records.map(r => r.get('label'));
+
+      const relTypesResult = await session.run('CALL db.relationshipTypes() YIELD relationshipType RETURN relationshipType');
+      const relationships = relTypesResult.records.map(r => r.get('relationshipType'));
+
+      return {
+        labels,
+        relationships,
+        schemaSummary: `Live Knowledge Graph Schema:\nNode Labels: ${labels.join(', ')}\nRelationship Types: ${relationships.join(', ')}`
+      };
+    } finally {
+      await session.close();
+    }
+  } catch (err) {}
+
+  const nodes = inMemoryStore.nodes || [];
+  const edges = inMemoryStore.edges || [];
+  const labels = Array.from(new Set(nodes.map(n => n.category).filter(Boolean)));
+  const relationships = Array.from(new Set(edges.map(e => e.label).filter(Boolean)));
+
+  return {
+    labels: labels.length > 0 ? labels : ['Application', 'Classification', 'Department', 'Technology'],
+    relationships: relationships.length > 0 ? relationships : ['CLASSIFIED_AS', 'OWNED_BY', 'USES_TECH'],
+    schemaSummary: `In-Memory Graph Schema:\nNode Labels: ${labels.join(', ')}\nRelationship Types: ${relationships.join(', ')}`
   };
 }
 
 async function clearGraph(config = {}) {
-  inMemoryStore = { nodes: [], edges: [], applications: [], hasData: false };
+  inMemoryStore = { nodes: [], edges: [], applications: [], hasData: false, mode: 'universal' };
   try {
     const { driver, database } = getDriver(config);
     const session = driver.session({ database });
@@ -494,6 +562,8 @@ module.exports = {
   executeCypher,
   getGraphData,
   getGraphStats,
+  getSchema,
   clearGraph,
-  saveToInMemoryStore
+  saveToInMemoryStore,
+  saveUniversalGraph
 };

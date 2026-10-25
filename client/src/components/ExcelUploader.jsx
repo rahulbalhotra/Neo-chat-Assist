@@ -9,7 +9,12 @@ import {
   Terminal, 
   Layers,
   ArrowRight,
-  Database
+  Database,
+  Globe,
+  Briefcase,
+  Boxes,
+  HeartPulse,
+  Info
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { api } from '../services/api';
@@ -18,6 +23,8 @@ export default function ExcelUploader({ config, onGraphBuilt, onSwitchToGraph })
   const [file, setFile] = useState(null);
   const [fileName, setFileName] = useState('');
   const [isSample, setIsSample] = useState(false);
+  const [sampleType, setSampleType] = useState('applications');
+  const [mode, setMode] = useState('universal'); // 'universal' | 'application'
   const [building, setBuilding] = useState(false);
   const [progressLogs, setProgressLogs] = useState([]);
   const [errorMsg, setErrorMsg] = useState('');
@@ -47,17 +54,28 @@ export default function ExcelUploader({ config, onGraphBuilt, onSwitchToGraph })
     }
   };
 
-  const handleLoadSample = () => {
+  const handleLoadSample = (type) => {
     setFile(null);
-    setFileName('enterprise_application_stack.xlsx (20 Applications Sample)');
     setIsSample(true);
+    setSampleType(type);
     setErrorMsg('');
     setSuccessResult(null);
+
+    if (type === 'supply_chain') {
+      setFileName('supply_chain_logistics.xlsx (Parts, Suppliers, Factories, Warehouses)');
+      setMode('universal');
+    } else if (type === 'healthcare') {
+      setFileName('healthcare_clinical_network.xlsx (Patients, Doctors, Hospitals, Medications)');
+      setMode('universal');
+    } else {
+      setFileName('enterprise_application_stack.xlsx (20 Applications IT Portfolio)');
+      setMode('application');
+    }
   };
 
   const handleStartBuild = async () => {
     if (!file && !isSample) {
-      setErrorMsg('Please select an Excel file or load the sample enterprise portfolio.');
+      setErrorMsg('Please select an Excel file or load one of the built-in sample datasets.');
       return;
     }
 
@@ -73,7 +91,7 @@ export default function ExcelUploader({ config, onGraphBuilt, onSwitchToGraph })
       setProgressLogs([...logs]);
     };
 
-    pushLog('Initializing Knowledge Graph extraction pipeline...');
+    pushLog(`Initializing Knowledge Graph extraction pipeline (Mode: ${mode.toUpperCase()})...`);
     pushLog(`Target LLM Provider: ${config.provider.toUpperCase()}`);
     pushLog(`Connecting to Neo4j Desktop at ${config.neo4jUri || 'bolt://localhost:7687'}...`);
 
@@ -84,10 +102,15 @@ export default function ExcelUploader({ config, onGraphBuilt, onSwitchToGraph })
       }
       if (isSample) {
         formData.append('useSample', 'true');
+        formData.append('sampleType', sampleType);
       }
+      formData.append('mode', mode);
 
-      pushLog('Reading spreadsheet rows & validating application stack schema...');
-      pushLog('Sending chunks to LLM for Retain / Retire / Optimize architectural classification...');
+      pushLog(`Reading spreadsheet records and validating ${mode === 'universal' ? 'dynamic entities' : 'application stack'}...`);
+      pushLog(mode === 'universal' 
+        ? 'Extracting Entity Nodes, Properties & Directed Relationships via LLM Graph Builder...'
+        : 'Sending chunks to LLM for Retain / Retire / Optimize architectural classification...'
+      );
       
       const res = await api.buildGraph(formData);
 
@@ -95,7 +118,7 @@ export default function ExcelUploader({ config, onGraphBuilt, onSwitchToGraph })
         if (Array.isArray(res.logs)) {
           res.logs.forEach(l => pushLog(`${l.stage}: ${l.message}`));
         }
-        pushLog(`SUCCESS: ${res.totalProcessed} applications extracted and linked into Neo4j!`);
+        pushLog(`SUCCESS: ${res.totalProcessed} records mapped and linked into Neo4j!`);
         setSuccessResult(res);
         confetti({
           particleCount: 80,
@@ -120,11 +143,67 @@ export default function ExcelUploader({ config, onGraphBuilt, onSwitchToGraph })
   return (
     <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px', background: '#ffffff' }}>
       
+      {/* Mode Switcher Tabs */}
+      <div style={{
+        display: 'flex',
+        gap: '12px',
+        background: '#f1f5f9',
+        padding: '6px',
+        borderRadius: '10px',
+        width: 'fit-content'
+      }}>
+        <button
+          type="button"
+          onClick={() => setMode('universal')}
+          style={{
+            padding: '8px 18px',
+            fontSize: '0.85rem',
+            fontWeight: '600',
+            borderRadius: '8px',
+            border: 'none',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            background: mode === 'universal' ? '#ffffff' : 'transparent',
+            color: mode === 'universal' ? '#008cc1' : '#64748b',
+            boxShadow: mode === 'universal' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+            transition: 'all 0.15s ease'
+          }}
+        >
+          <Globe size={16} />
+          <span>Universal Graph Builder (Any Excel)</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setMode('application')}
+          style={{
+            padding: '8px 18px',
+            fontSize: '0.85rem',
+            fontWeight: '600',
+            borderRadius: '8px',
+            border: 'none',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            background: mode === 'application' ? '#ffffff' : 'transparent',
+            color: mode === 'application' ? '#7c3aed' : '#64748b',
+            boxShadow: mode === 'application' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+            transition: 'all 0.15s ease'
+          }}
+        >
+          <Briefcase size={16} />
+          <span>Application Stack Rationalization (Retain/Retire/Optimize)</span>
+        </button>
+      </div>
+
       {/* Intro Banner */}
       <div className="glass-panel" style={{
         padding: '20px 24px',
-        background: '#f0f9ff',
-        border: '1px solid #bae6fd',
+        background: mode === 'universal' ? '#f0f9ff' : '#f5f3ff',
+        border: mode === 'universal' ? '1px solid #bae6fd' : '1px solid #ddd6fe',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -133,37 +212,81 @@ export default function ExcelUploader({ config, onGraphBuilt, onSwitchToGraph })
       }}>
         <div style={{ maxWidth: '680px' }}>
           <h2 style={{ fontSize: '1.2rem', fontWeight: '700', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <FileSpreadsheet size={22} color="#008cc1" />
-            Upload Application Stack Spreadsheet
+            {mode === 'universal' ? (
+              <>
+                <Globe size={22} color="#008cc1" />
+                Universal Knowledge Graph Builder
+              </>
+            ) : (
+              <>
+                <Briefcase size={22} color="#7c3aed" />
+                Application Stack Rationalization
+              </>
+            )}
           </h2>
-          <p style={{ fontSize: '0.85rem', color: '#334155', marginTop: '4px' }}>
-            Transform your IT application portfolio spreadsheet into an intelligent <strong>Neo4j Knowledge Graph</strong>.
-            The selected LLM ({config.provider === 'azure' ? 'Azure OpenAI' : 'Google Gemini'}) will extract architecture entities, map system dependencies, and classify each system into <strong>Retain</strong>, <strong>Retire</strong>, or <strong>Optimize</strong>.
+          <p style={{ fontSize: '0.85rem', color: '#334155', marginTop: '6px', lineHeight: 1.5 }}>
+            {mode === 'universal' ? (
+              <>
+                <strong>Yes, this is a Universal Graph Builder!</strong> Upload <strong>ANY Excel or CSV</strong> from any domain (Supply Chain, Healthcare, CRM, Finance, Logistics, HR, E-Commerce, etc.). The selected LLM ({config.provider === 'azure' ? 'Azure OpenAI' : 'Google Gemini'}) automatically detects entities (Nodes), properties, and semantic connections (Relationships) and persists them in Neo4j Desktop.
+              </>
+            ) : (
+              <>
+                Upload your IT application portfolio spreadsheet. The LLM extracts system architectures, maps inter-dependencies, and classifies each system into <strong>Retain</strong>, <strong>Retire</strong>, or <strong>Optimize</strong> with cost savings analytics.
+              </>
+            )}
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <button
-            id="load-sample-btn"
-            type="button"
-            className="btn btn-outline"
-            onClick={handleLoadSample}
-            style={{ fontSize: '0.8rem', padding: '8px 14px', background: '#ffffff', borderColor: '#cbd5e1' }}
-          >
-            <Sparkles size={14} color="#7c3aed" />
-            Load Sample Portfolio (20 Apps)
-          </button>
+        {/* Quick Sample Buttons */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div style={{ fontSize: '0.75rem', fontWeight: '600', color: '#64748b' }}>
+            Quick Load Built-in Samples:
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+            <button
+              id="load-supply-sample-btn"
+              type="button"
+              className="btn btn-outline"
+              onClick={() => handleLoadSample('supply_chain')}
+              style={{ fontSize: '0.75rem', padding: '6px 12px', background: '#ffffff', borderColor: '#cbd5e1' }}
+            >
+              <Boxes size={13} color="#008cc1" />
+              Supply Chain (Universal)
+            </button>
 
-          <a
-            id="download-template-btn"
-            href="/api/sample-excel"
-            download="enterprise_application_stack.xlsx"
-            className="btn btn-outline"
-            style={{ fontSize: '0.8rem', padding: '8px 14px', textDecoration: 'none', background: '#ffffff', borderColor: '#cbd5e1' }}
-          >
-            <Download size={14} />
-            Download Excel Template
-          </a>
+            <button
+              id="load-health-sample-btn"
+              type="button"
+              className="btn btn-outline"
+              onClick={() => handleLoadSample('healthcare')}
+              style={{ fontSize: '0.75rem', padding: '6px 12px', background: '#ffffff', borderColor: '#cbd5e1' }}
+            >
+              <HeartPulse size={13} color="#e11d48" />
+              Healthcare (Universal)
+            </button>
+
+            <button
+              id="load-app-sample-btn"
+              type="button"
+              className="btn btn-outline"
+              onClick={() => handleLoadSample('applications')}
+              style={{ fontSize: '0.75rem', padding: '6px 12px', background: '#ffffff', borderColor: '#cbd5e1' }}
+            >
+              <Briefcase size={13} color="#7c3aed" />
+              App Portfolio (20 Apps)
+            </button>
+
+            <a
+              id="download-template-btn"
+              href={`/api/sample-excel?type=${sampleType}`}
+              download
+              className="btn btn-outline"
+              style={{ fontSize: '0.75rem', padding: '6px 12px', textDecoration: 'none', background: '#ffffff', borderColor: '#cbd5e1' }}
+            >
+              <Download size={13} />
+              Download Excel
+            </a>
+          </div>
         </div>
       </div>
 
@@ -195,19 +318,19 @@ export default function ExcelUploader({ config, onGraphBuilt, onSwitchToGraph })
           width: '56px',
           height: '56px',
           borderRadius: '50%',
-          background: '#e0f2fe',
+          background: mode === 'universal' ? '#e0f2fe' : '#ede9fe',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           margin: '0 auto 14px auto'
         }}>
-          <UploadCloud size={28} color="#008cc1" />
+          <UploadCloud size={28} color={mode === 'universal' ? '#008cc1' : '#7c3aed'} />
         </div>
 
         {fileName ? (
           <div>
             <div style={{ fontSize: '1rem', fontWeight: '600', color: '#0f172a' }}>
-              Selected: <span style={{ color: '#008cc1' }}>{fileName}</span>
+              Selected: <span style={{ color: mode === 'universal' ? '#008cc1' : '#7c3aed' }}>{fileName}</span>
             </div>
             <p style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '4px' }}>
               Click or drag another file to replace
@@ -216,10 +339,16 @@ export default function ExcelUploader({ config, onGraphBuilt, onSwitchToGraph })
         ) : (
           <div>
             <div style={{ fontSize: '1rem', fontWeight: '600', color: '#0f172a' }}>
-              Drag & Drop your Application Inventory Excel (.xlsx, .xls, .csv)
+              {mode === 'universal' 
+                ? 'Drag & Drop ANY Excel or CSV Sheet (.xlsx, .xls, .csv)' 
+                : 'Drag & Drop your Application Inventory Excel (.xlsx, .xls, .csv)'
+              }
             </div>
             <p style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '6px' }}>
-              Supports columns: Application Name, Department, Annual Cost, Health, Tech Stack, Hosting, Criticality, Dependencies
+              {mode === 'universal' 
+                ? 'Supports any tabular columns: Patients, Products, Suppliers, Sales, Employees, Devices, etc.' 
+                : 'Supports columns: Application Name, Department, Annual Cost, Health, Tech Stack, Hosting, Criticality, Dependencies'
+              }
             </p>
           </div>
         )}
@@ -234,6 +363,9 @@ export default function ExcelUploader({ config, onGraphBuilt, onSwitchToGraph })
           </span>
           <span className="badge badge-neo4j">
             Target: Neo4j Desktop ({config.neo4jDatabase || 'neo4j'})
+          </span>
+          <span className="badge" style={{ background: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1' }}>
+            Mode: {mode === 'universal' ? 'Universal Knowledge Graph' : 'Application Rationalization'}
           </span>
         </div>
 
@@ -296,7 +428,7 @@ export default function ExcelUploader({ config, onGraphBuilt, onSwitchToGraph })
                 Knowledge Graph Built Successfully!
               </div>
               <div style={{ fontSize: '0.8rem', color: '#047857' }}>
-                {successResult.totalProcessed} applications classified and linked in Neo4j Desktop.
+                {successResult.totalProcessed} records extracted and linked in Neo4j Desktop.
               </div>
             </div>
           </div>

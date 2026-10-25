@@ -2,6 +2,12 @@ const XLSX = require('xlsx');
 const path = require('path');
 const fs = require('fs');
 
+const sampleDir = path.join(__dirname, '..', 'sampleData');
+if (!fs.existsSync(sampleDir)) {
+  fs.mkdirSync(sampleDir, { recursive: true });
+}
+
+// 1. DATASET 1: Enterprise Application Stack (IT Portfolio Rationalization)
 const sampleApplications = [
   {
     "Application Name": "SAP S/4HANA Finance",
@@ -142,174 +148,176 @@ const sampleApplications = [
     "Vendor": "IBM / HCL",
     "Dependencies": "Active Directory",
     "Description": "Historical email and memo repository kept alive strictly for compliance retention. Only queried 2-3 times per year."
-  },
-  {
-    "Application Name": "Tableau Analytics Server",
-    "Department": "Analytics & BI",
-    "Business Criticality": "Medium",
-    "Annual Maintenance Cost": 260000,
-    "Architecture Health": "Stable",
-    "Hosting": "On-Premises VM",
-    "Tech Stack": "Tableau Server, PostgreSQL, Windows Server",
-    "Cloud Readiness": "Cloud Ready",
-    "Active Users": 1100,
-    "Vendor": "Salesforce / Tableau",
-    "Dependencies": "Snowflake Data Warehouse",
-    "Description": "On-prem dashboard server. High infrastructure cost compared to Tableau Cloud or Power BI embedded."
-  },
-  {
-    "Application Name": "Legacy FoxPro Inventory",
-    "Department": "Supply Chain & Logistics",
-    "Business Criticality": "Low",
-    "Annual Maintenance Cost": 95000,
-    "Architecture Health": "EOL & Fragile",
-    "Hosting": "Local Windows Server 2008",
-    "Tech Stack": "Visual FoxPro 9.0, DBF files",
-    "Cloud Readiness": "Legacy Incompatible",
-    "Active Users": 12,
-    "Vendor": "In-House",
-    "Dependencies": "Oracle E-Business Suite 11i",
-    "Description": "Regional warehouse stock tracker run on an unpatched Windows 2008 machine. Severe single-point-of-failure."
-  },
-  {
-    "Application Name": "Jira & Confluence Cloud",
-    "Department": "Engineering",
-    "Business Criticality": "High",
-    "Annual Maintenance Cost": 175000,
-    "Architecture Health": "Modern SaaS",
-    "Hosting": "SaaS",
-    "Tech Stack": "Atlassian Cloud REST API, Forge",
-    "Cloud Readiness": "Cloud Native",
-    "Active Users": 1400,
-    "Vendor": "Atlassian",
-    "Dependencies": "Active Directory",
-    "Description": "Standardized issue tracking, product sprint planning, and engineering knowledge base."
-  },
-  {
-    "Application Name": "ServiceNow ITOM",
-    "Department": "IT Infrastructure",
-    "Business Criticality": "High",
-    "Annual Maintenance Cost": 390000,
-    "Architecture Health": "Modern SaaS",
-    "Hosting": "SaaS",
-    "Tech Stack": "ServiceNow Now Platform, JavaScript",
-    "Cloud Readiness": "Cloud Native",
-    "Active Users": 2200,
-    "Vendor": "ServiceNow",
-    "Dependencies": "Active Directory, Jira & Confluence Cloud",
-    "Description": "IT service desk, incident response, CMDB configuration management, and change approvals."
-  },
-  {
-    "Application Name": "Custom C# WinForms POS",
-    "Department": "Retail Operations",
-    "Business Criticality": "High",
-    "Annual Maintenance Cost": 340000,
-    "Architecture Health": "High Tech Debt",
-    "Hosting": "On-Premises Store PCs",
-    "Tech Stack": ".NET Framework 3.5, C#, SQL Server Express",
-    "Cloud Readiness": "Monolith Heavy",
-    "Active Users": 850,
-    "Vendor": "In-House",
-    "Dependencies": "Legacy AS400 Core Banking",
-    "Description": "In-store desktop point-of-sale software requiring manual onsite updates across 120 retail branches."
-  },
-  {
-    "Application Name": "CyberArk Privileged Access Vault",
-    "Department": "IT Security",
-    "Business Criticality": "Mission Critical",
-    "Annual Maintenance Cost": 210000,
-    "Architecture Health": "Modern",
-    "Hosting": "Hybrid Cloud",
-    "Tech Stack": "CyberArk EPV, Vault Protocol, REST API",
-    "Cloud Readiness": "Cloud Ready",
-    "Active Users": 350,
-    "Vendor": "CyberArk",
-    "Dependencies": "Active Directory",
-    "Description": "Enterprise credential rotation, SSH key management, and zero-trust privileged account access enforcement."
-  },
-  {
-    "Application Name": "Legacy Perl Report Generator",
-    "Department": "Finance & Accounting",
-    "Business Criticality": "Low",
-    "Annual Maintenance Cost": 75000,
-    "Architecture Health": "EOL & Fragile",
-    "Hosting": "Linux Server",
-    "Tech Stack": "Perl 5.10, Flat Files, Cron",
-    "Cloud Readiness": "Legacy Incompatible",
-    "Active Users": 4,
-    "Vendor": "In-House",
-    "Dependencies": "Legacy AS400 Core Banking, SAP S/4HANA Finance",
-    "Description": "Nightly reconciliation script written by a former employee in 2006. Unmaintained and breaks on leap years."
-  },
-  {
-    "Application Name": "Datadog Cloud Observability",
-    "Department": "Engineering",
-    "Business Criticality": "High",
-    "Annual Maintenance Cost": 290000,
-    "Architecture Health": "Modern SaaS",
-    "Hosting": "SaaS",
-    "Tech Stack": "Datadog Agent, OpenTelemetry, APM",
-    "Cloud Readiness": "Cloud Native",
-    "Active Users": 450,
-    "Vendor": "Datadog",
-    "Dependencies": "Custom Python Microservices, AWS Cloud Infrastructure",
-    "Description": "Unified distributed tracing, synthetic checks, log aggregation, and real-time infrastructure alerting."
-  },
-  {
-    "Application Name": "Active Directory & Entra ID",
-    "Department": "IT Infrastructure",
-    "Business Criticality": "Mission Critical",
-    "Annual Maintenance Cost": 180000,
-    "Architecture Health": "Modern",
-    "Hosting": "Hybrid Cloud",
-    "Tech Stack": "SAML 2.0, OIDC, Kerberos, Azure AD",
-    "Cloud Readiness": "Cloud Native",
-    "Active Users": 5800,
-    "Vendor": "Microsoft",
-    "Dependencies": "None",
-    "Description": "Master identity and access management system providing Single Sign-On (SSO) and RBAC for all apps."
-  },
-  {
-    "Application Name": "Informatica PowerCenter ETL",
-    "Department": "Data Architecture",
-    "Business Criticality": "High",
-    "Annual Maintenance Cost": 520000,
-    "Architecture Health": "High Tech Debt",
-    "Hosting": "On-Premises VM",
-    "Tech Stack": "Informatica Server 9.6, Oracle Repository",
-    "Cloud Readiness": "Monolith Heavy",
-    "Active Users": 45,
-    "Vendor": "Informatica",
-    "Dependencies": "Oracle E-Business Suite 11i, Snowflake Data Warehouse",
-    "Description": "On-premises enterprise ETL pipeline with high annual licensing and complex batch dependencies that frequently block data lake updates."
   }
 ];
 
-const sampleDir = path.join(__dirname, '..', 'sampleData');
-if (!fs.existsSync(sampleDir)) {
-  fs.mkdirSync(sampleDir, { recursive: true });
-}
+const wsApps = XLSX.utils.json_to_sheet(sampleApplications);
+const wbApps = XLSX.utils.book_new();
+XLSX.utils.book_append_sheet(wbApps, wsApps, "Applications");
+XLSX.writeFile(wbApps, path.join(sampleDir, 'enterprise_application_stack.xlsx'));
 
-const worksheet = XLSX.utils.json_to_sheet(sampleApplications);
-const workbook = XLSX.utils.book_new();
-XLSX.utils.book_append_sheet(workbook, worksheet, "Application Portfolio");
-
-// Set column widths
-worksheet['!cols'] = [
-  { wch: 30 }, // Application Name
-  { wch: 25 }, // Department
-  { wch: 20 }, // Business Criticality
-  { wch: 24 }, // Annual Maintenance Cost
-  { wch: 20 }, // Architecture Health
-  { wch: 25 }, // Hosting
-  { wch: 35 }, // Tech Stack
-  { wch: 22 }, // Cloud Readiness
-  { wch: 15 }, // Active Users
-  { wch: 20 }, // Vendor
-  { wch: 35 }, // Dependencies
-  { wch: 60 }  // Description
+// 2. DATASET 2: Global Supply Chain & Logistics (Universal Knowledge Graph)
+const sampleSupplyChain = [
+  {
+    "Part ID": "PRT-101",
+    "Part Name": "Lithium Battery Pack 75kWh",
+    "Category": "Power & Energy",
+    "Supplier": "Panasonic Energy",
+    "Supplier Country": "Japan",
+    "Factory": "Fremont Gigafactory",
+    "Factory City": "Fremont, CA",
+    "Target Warehouse": "Northwest Distribution Hub",
+    "Warehouse State": "Washington",
+    "Carrier": "Maersk Logistics",
+    "Unit Cost": 4500,
+    "Lead Time Days": 21,
+    "Shipment Status": "In Transit"
+  },
+  {
+    "Part ID": "PRT-102",
+    "Part Name": "NVIDIA Drive Orin AI Chip",
+    "Category": "Semiconductors",
+    "Supplier": "TSMC",
+    "Supplier Country": "Taiwan",
+    "Factory": "Austin Assembly Plant",
+    "Factory City": "Austin, TX",
+    "Target Warehouse": "Central Texas Depot",
+    "Warehouse State": "Texas",
+    "Carrier": "FedEx Express",
+    "Unit Cost": 1200,
+    "Lead Time Days": 14,
+    "Shipment Status": "Delivered"
+  },
+  {
+    "Part ID": "PRT-103",
+    "Part Name": "Carbon Ceramic Brake Discs",
+    "Category": "Braking Systems",
+    "Supplier": "Brembo SpA",
+    "Supplier Country": "Italy",
+    "Factory": "Fremont Gigafactory",
+    "Factory City": "Fremont, CA",
+    "Target Warehouse": "Pacific Coast Hub",
+    "Warehouse State": "California",
+    "Carrier": "DHL Global Forwarding",
+    "Unit Cost": 850,
+    "Lead Time Days": 18,
+    "Shipment Status": "Customs Hold"
+  },
+  {
+    "Part ID": "PRT-104",
+    "Part Name": "Automotive OLED Cockpit Display",
+    "Category": "Electronics",
+    "Supplier": "LG Display",
+    "Supplier Country": "South Korea",
+    "Factory": "Berlin EV Facility",
+    "Factory City": "Gruenheide",
+    "Target Warehouse": "European Central Warehouse",
+    "Warehouse State": "Germany",
+    "Carrier": "Kuehne + Nagel",
+    "Unit Cost": 620,
+    "Lead Time Days": 12,
+    "Shipment Status": "Delivered"
+  },
+  {
+    "Part ID": "PRT-105",
+    "Part Name": "Electric Powertrain Inverter",
+    "Category": "Powertrain",
+    "Supplier": "Bosch Mobility",
+    "Supplier Country": "Germany",
+    "Factory": "Austin Assembly Plant",
+    "Factory City": "Austin, TX",
+    "Target Warehouse": "Central Texas Depot",
+    "Warehouse State": "Texas",
+    "Carrier": "UPS Supply Chain",
+    "Unit Cost": 980,
+    "Lead Time Days": 15,
+    "Shipment Status": "In Transit"
+  },
+  {
+    "Part ID": "PRT-106",
+    "Part Name": "Lightweight Aluminum Chassis Subframe",
+    "Category": "Structural",
+    "Supplier": "Alcoa Corporation",
+    "Supplier Country": "United States",
+    "Factory": "Fremont Gigafactory",
+    "Factory City": "Fremont, CA",
+    "Target Warehouse": "Pacific Coast Hub",
+    "Warehouse State": "California",
+    "Carrier": "Schneider National",
+    "Unit Cost": 1400,
+    "Lead Time Days": 7,
+    "Shipment Status": "Delivered"
+  }
 ];
 
-const filePath = path.join(sampleDir, 'enterprise_application_stack.xlsx');
-XLSX.writeFile(workbook, filePath);
-console.log(`Sample Excel created at: ${filePath}`);
+const wsSupply = XLSX.utils.json_to_sheet(sampleSupplyChain);
+const wbSupply = XLSX.utils.book_new();
+XLSX.utils.book_append_sheet(wbSupply, wsSupply, "SupplyChain");
+XLSX.writeFile(wbSupply, path.join(sampleDir, 'supply_chain_logistics.xlsx'));
+
+// 3. DATASET 3: Healthcare Clinical Patient & Treatment Network (Universal Knowledge Graph)
+const sampleHealthcare = [
+  {
+    "Patient ID": "PAT-901",
+    "Patient Name": "Sarah Jenkins",
+    "Age": 54,
+    "Gender": "Female",
+    "Attending Physician": "Dr. Emily Chen, MD",
+    "Specialty": "Cardiology",
+    "Hospital": "Mayo Clinic",
+    "Hospital City": "Rochester, MN",
+    "Primary Diagnosis": "Hypertensive Heart Disease",
+    "Prescribed Medication": "Lisinopril 20mg",
+    "Treatment Protocol": "Angiotensin Inhibitor Therapy",
+    "Clinical Outcome": "Stable"
+  },
+  {
+    "Patient ID": "PAT-902",
+    "Patient Name": "Michael Rossi",
+    "Age": 68,
+    "Gender": "Male",
+    "Attending Physician": "Dr. Robert Vance, MD",
+    "Specialty": "Oncology",
+    "Hospital": "Memorial Sloan Kettering",
+    "Hospital City": "New York, NY",
+    "Primary Diagnosis": "Non-Small Cell Lung Carcinoma",
+    "Prescribed Medication": "Pembrolizumab (Keytruda)",
+    "Treatment Protocol": "Immune Checkpoint Inhibitor",
+    "Clinical Outcome": "Partial Remission"
+  },
+  {
+    "Patient ID": "PAT-903",
+    "Patient Name": "Elena Rostova",
+    "Age": 38,
+    "Gender": "Female",
+    "Attending Physician": "Dr. Anita Patel, MD",
+    "Specialty": "Neurology",
+    "Hospital": "Johns Hopkins Hospital",
+    "Hospital City": "Baltimore, MD",
+    "Primary Diagnosis": "Relapsing-Remitting Multiple Sclerosis",
+    "Prescribed Medication": "Ocrelizumab (Ocrevus)",
+    "Treatment Protocol": "B-cell Depletion Infusion",
+    "Clinical Outcome": "Symptom Controlled"
+  },
+  {
+    "Patient ID": "PAT-904",
+    "Patient Name": "David Thompson",
+    "Age": 61,
+    "Gender": "Male",
+    "Attending Physician": "Dr. Emily Chen, MD",
+    "Specialty": "Cardiology",
+    "Hospital": "Mayo Clinic",
+    "Hospital City": "Rochester, MN",
+    "Primary Diagnosis": "Coronary Artery Atherosclerosis",
+    "Prescribed Medication": "Atorvastatin 40mg",
+    "Treatment Protocol": "Percutaneous Coronary Intervention",
+    "Clinical Outcome": "Recovered"
+  }
+];
+
+const wsHealth = XLSX.utils.json_to_sheet(sampleHealthcare);
+const wbHealth = XLSX.utils.book_new();
+XLSX.utils.book_append_sheet(wbHealth, wsHealth, "Healthcare");
+XLSX.writeFile(wbHealth, path.join(sampleDir, 'healthcare_clinical_network.xlsx'));
+
+console.log("Generated sample datasets: Applications, Supply Chain, Healthcare");

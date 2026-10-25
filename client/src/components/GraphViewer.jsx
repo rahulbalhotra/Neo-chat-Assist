@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { Network } from 'vis-network';
 import { DataSet } from 'vis-data';
 import { 
@@ -14,6 +14,28 @@ import {
   Sparkles
 } from 'lucide-react';
 
+// Curated pastel/vibrant palette for universal dynamic node categories
+const CATEGORY_PALETTES = [
+  { bg: '#e0f2fe', border: '#0284c7', text: '#0369a1' }, // Sky
+  { bg: '#ecfdf5', border: '#059669', text: '#047857' }, // Emerald
+  { bg: '#f5f3ff', border: '#7c3aed', text: '#6d28d9' }, // Violet
+  { bg: '#fffbeb', border: '#d97706', text: '#b45309' }, // Amber
+  { bg: '#fdf2f8', border: '#db2777', text: '#be185d' }, // Pink
+  { bg: '#f0fdf4', border: '#16a34a', text: '#15803d' }, // Green
+  { bg: '#fef2f2', border: '#dc2626', text: '#b91c1c' }, // Red
+  { bg: '#ecfeff', border: '#0891b2', text: '#0e7490' }, // Cyan
+  { bg: '#f8fafc', border: '#475569', text: '#334155' }  // Slate
+];
+
+function getCategoryColor(category = 'Entity') {
+  let hash = 0;
+  for (let i = 0; i < category.length; i++) {
+    hash = category.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const idx = Math.abs(hash) % CATEGORY_PALETTES.length;
+  return CATEGORY_PALETTES[idx];
+}
+
 export default function GraphViewer({ 
   graphData, 
   onSelectNode, 
@@ -22,18 +44,29 @@ export default function GraphViewer({
 }) {
   const containerRef = useRef(null);
   const networkRef = useRef(null);
-  const [filterClass, setFilterClass] = useState('ALL'); // 'ALL' | 'RETAIN' | 'RETIRE' | 'OPTIMIZE'
+  const [filterCategory, setFilterCategory] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [physicsEnabled, setPhysicsEnabled] = useState(true);
+
+  // Discover distinct categories present in active graph
+  const availableCategories = useMemo(() => {
+    if (!graphData?.nodes) return [];
+    const cats = new Set();
+    graphData.nodes.forEach(n => {
+      const c = n.category || (n.properties?.classification) || 'Entity';
+      if (c) cats.add(c);
+    });
+    return Array.from(cats);
+  }, [graphData]);
 
   // Helper to determine node visual appearance
   const getNodeStyle = (rawNode) => {
     const label = rawNode.label || rawNode.id;
-    const cat = rawNode.category || 'Application';
+    const cat = rawNode.category || 'Entity';
     const props = rawNode.properties || {};
     const cls = (props.classification || '').toUpperCase();
 
-    // Classification hubs
+    // Strategic Classification hubs
     if (cat === 'Classification' || label === 'RETAIN' || label === 'RETIRE' || label === 'OPTIMIZE') {
       if (label === 'RETAIN') {
         return {
@@ -61,7 +94,7 @@ export default function GraphViewer({
       }
     }
 
-    // Application nodes
+    // Application portfolio nodes
     if (cat === 'Application') {
       let bg = '#ffffff';
       let border = '#008cc1';
@@ -90,47 +123,18 @@ export default function GraphViewer({
       };
     }
 
-    // Department nodes
-    if (cat === 'Department') {
-      return {
-        color: { background: '#eff6ff', border: '#3b82f6', highlight: { background: '#dbeafe', border: '#1d4ed8' } },
-        shape: 'ellipse',
-        size: 26,
-        font: { color: '#1e40af', size: 12, bold: true }
-      };
-    }
-
-    // Technology nodes
-    if (cat === 'Technology') {
-      const isLegacy = props.isLegacy;
-      return {
-        color: { 
-          background: isLegacy ? '#fef2f2' : '#f5f3ff', 
-          border: isLegacy ? '#ef4444' : '#8b5cf6', 
-          highlight: { background: isLegacy ? '#fee2e2' : '#ede9fe', border: isLegacy ? '#dc2626' : '#7c3aed' } 
-        },
-        shape: 'ellipse',
-        size: 20,
-        font: { color: isLegacy ? '#991b1b' : '#6b21a8', size: 11 }
-      };
-    }
-
-    // Platform nodes
-    if (cat === 'Platform') {
-      return {
-        color: { background: '#ecfeff', border: '#06b6d4', highlight: { background: '#cffafe', border: '#0891b2' } },
-        shape: 'box',
-        margin: 8,
-        font: { color: '#0e7490', size: 11, bold: true }
-      };
-    }
-
-    // Default
+    // Dynamic Universal Entity styling
+    const palette = getCategoryColor(cat);
     return {
-      color: { background: '#f1f5f9', border: '#cbd5e1' },
-      shape: 'dot',
-      size: 16,
-      font: { color: '#334155', size: 11 }
+      color: { 
+        background: palette.bg, 
+        border: palette.border, 
+        highlight: { background: '#ffffff', border: palette.border } 
+      },
+      shape: 'box',
+      borderWidth: 1.5,
+      margin: 8,
+      font: { color: palette.text, size: 12, bold: true }
     };
   };
 
@@ -141,13 +145,10 @@ export default function GraphViewer({
 
     // Apply filtering
     let filteredNodes = graphData.nodes;
-    if (filterClass !== 'ALL') {
+    if (filterCategory !== 'ALL') {
       filteredNodes = graphData.nodes.filter(n => {
-        if (n.category === 'Classification') return n.label === filterClass;
-        if (n.category === 'Application') {
-          return (n.properties?.classification || '').toUpperCase() === filterClass;
-        }
-        return true;
+        const cat = n.category || (n.properties?.classification) || '';
+        return cat.toUpperCase() === filterCategory.toUpperCase() || n.label === filterCategory;
       });
     }
 
@@ -233,7 +234,7 @@ export default function GraphViewer({
     return () => {
       network.destroy();
     };
-  }, [graphData, filterClass, (highlightNodeNames || []).join(','), physicsEnabled]);
+  }, [graphData, filterCategory, (highlightNodeNames || []).join(','), physicsEnabled]);
 
   const handleZoomIn = () => {
     if (networkRef.current) {
@@ -290,79 +291,51 @@ export default function GraphViewer({
         background: '#ffffff'
       }}>
         
-        {/* Left: Filter Pills */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        {/* Left: Dynamic Filter Pills */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
           <span style={{ fontSize: '0.78rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <Filter size={14} /> Filter:
+            <Filter size={14} /> Category:
           </span>
 
           <button
             id="filter-all-btn"
             type="button"
             className="btn"
-            onClick={() => setFilterClass('ALL')}
+            onClick={() => setFilterCategory('ALL')}
             style={{
               padding: '4px 10px',
               fontSize: '0.75rem',
               borderRadius: '6px',
-              background: filterClass === 'ALL' ? '#e2e8f0' : 'transparent',
-              color: filterClass === 'ALL' ? '#0f172a' : '#64748b',
+              background: filterCategory === 'ALL' ? '#0f172a' : '#f1f5f9',
+              color: filterCategory === 'ALL' ? '#ffffff' : '#475569',
               border: '1px solid #cbd5e1'
             }}
           >
-            All Nodes
+            All Entities ({graphData?.nodes?.length || 0})
           </button>
 
-          <button
-            id="filter-retain-btn"
-            type="button"
-            className="btn"
-            onClick={() => setFilterClass('RETAIN')}
-            style={{
-              padding: '4px 10px',
-              fontSize: '0.75rem',
-              borderRadius: '6px',
-              background: filterClass === 'RETAIN' ? 'var(--retain-bg)' : 'transparent',
-              color: 'var(--retain-green)',
-              border: filterClass === 'RETAIN' ? '1px solid var(--retain-green)' : '1px solid #cbd5e1'
-            }}
-          >
-            Retain
-          </button>
-
-          <button
-            id="filter-retire-btn"
-            type="button"
-            className="btn"
-            onClick={() => setFilterClass('RETIRE')}
-            style={{
-              padding: '4px 10px',
-              fontSize: '0.75rem',
-              borderRadius: '6px',
-              background: filterClass === 'RETIRE' ? 'var(--retire-bg)' : 'transparent',
-              color: 'var(--retire-red)',
-              border: filterClass === 'RETIRE' ? '1px solid var(--retire-red)' : '1px solid #cbd5e1'
-            }}
-          >
-            Retire
-          </button>
-
-          <button
-            id="filter-optimize-btn"
-            type="button"
-            className="btn"
-            onClick={() => setFilterClass('OPTIMIZE')}
-            style={{
-              padding: '4px 10px',
-              fontSize: '0.75rem',
-              borderRadius: '6px',
-              background: filterClass === 'OPTIMIZE' ? 'var(--optimize-bg)' : 'transparent',
-              color: 'var(--optimize-amber)',
-              border: filterClass === 'OPTIMIZE' ? '1px solid var(--optimize-amber)' : '1px solid #cbd5e1'
-            }}
-          >
-            Optimize
-          </button>
+          {availableCategories.slice(0, 6).map(cat => {
+            const isSelected = filterCategory.toUpperCase() === cat.toUpperCase();
+            const palette = getCategoryColor(cat);
+            return (
+              <button
+                key={cat}
+                type="button"
+                className="btn"
+                onClick={() => setFilterCategory(cat)}
+                style={{
+                  padding: '4px 10px',
+                  fontSize: '0.75rem',
+                  borderRadius: '6px',
+                  background: isSelected ? palette.border : palette.bg,
+                  color: isSelected ? '#ffffff' : palette.text,
+                  border: `1px solid ${palette.border}`
+                }}
+              >
+                {cat}
+              </button>
+            );
+          })}
         </div>
 
         {/* Right: Search & Controls */}
@@ -373,7 +346,7 @@ export default function GraphViewer({
               <input
                 id="search-graph-input"
                 type="text"
-                placeholder="Find application, tech..."
+                placeholder="Find node or entity..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 style={{ paddingLeft: '32px', width: '210px', height: '32px', fontSize: '0.8rem', background: '#ffffff', borderColor: '#cbd5e1' }}
@@ -423,7 +396,7 @@ export default function GraphViewer({
         }} 
       />
 
-      {/* Floating Legend */}
+      {/* Dynamic Floating Legend */}
       <div style={{
         position: 'absolute',
         bottom: '16px',
@@ -436,32 +409,23 @@ export default function GraphViewer({
         fontSize: '0.75rem',
         display: 'flex',
         alignItems: 'center',
-        gap: '14px',
+        flexWrap: 'wrap',
+        gap: '12px',
         pointerEvents: 'none',
         zIndex: 10,
         boxShadow: 'var(--shadow-md)',
         color: '#334155'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span style={{ width: '10px', height: '10px', background: '#10b981', borderRadius: '2px', display: 'inline-block' }} />
-          <span>Retain App</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span style={{ width: '10px', height: '10px', background: '#ef4444', borderRadius: '2px', display: 'inline-block' }} />
-          <span>Retire App</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span style={{ width: '10px', height: '10px', background: '#f59e0b', borderRadius: '2px', display: 'inline-block' }} />
-          <span>Optimize App</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span style={{ width: '10px', height: '10px', background: '#3b82f6', borderRadius: '50%', display: 'inline-block' }} />
-          <span>Department</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span style={{ width: '10px', height: '10px', background: '#8b5cf6', borderRadius: '50%', display: 'inline-block' }} />
-          <span>Technology</span>
-        </div>
+        <span style={{ fontWeight: '600', color: '#64748b' }}>Entity Legend:</span>
+        {availableCategories.slice(0, 5).map(cat => {
+          const palette = getCategoryColor(cat);
+          return (
+            <div key={cat} style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <span style={{ width: '10px', height: '10px', background: palette.border, borderRadius: '2px', display: 'inline-block' }} />
+              <span>{cat}</span>
+            </div>
+          );
+        })}
       </div>
 
       {/* Empty State */}
@@ -477,7 +441,7 @@ export default function GraphViewer({
           <Layers size={48} color="#008cc1" style={{ opacity: 0.5, marginBottom: '12px' }} />
           <h3 style={{ fontSize: '1.1rem', color: '#0f172a' }}>No Graph Data Loaded Yet</h3>
           <p style={{ fontSize: '0.85rem', marginTop: '6px', maxWidth: '380px' }}>
-            Upload your application portfolio Excel sheet or load the built-in 20-app sample to construct the Neo4j Knowledge Graph.
+            Upload any Excel spreadsheet or load one of the built-in samples to construct your interactive Neo4j Knowledge Graph.
           </p>
         </div>
       )}
