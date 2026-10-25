@@ -270,7 +270,7 @@ export default function App() {
 
         {/* TAB 2: KNOWLEDGE GRAPH EXPLORER */}
         {activeTab === 'graph' && (
-          <div className="glass-panel" style={{ flex: 1, minHeight: '620px', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#ffffff' }}>
+          <div className="glass-panel" style={{ flex: 1, minHeight: '720px', height: 'calc(100vh - 240px)', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#ffffff' }}>
             <GraphViewer
               graphData={graphData}
               onSelectNode={(node) => setSelectedNode(node)}
