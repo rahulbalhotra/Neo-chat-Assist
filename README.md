@@ -68,7 +68,16 @@ git clone https://github.com/rahulbalhotra/Neo-chat-Assist.git
 cd Neo-chat-Assist
 ```
 
-### 2. Install Dependencies
+### Quick Start (Windows 1-Click)
+Simply double-click `start.bat` or run:
+```cmd
+start.bat
+```
+This automatically verifies Node.js, installs root and client dependencies, generates sample datasets, starts both servers, and opens `http://localhost:5174/` in your browser.
+
+---
+
+### Manual Setup
 ```bash
 # Install root & backend dependencies
 npm install
