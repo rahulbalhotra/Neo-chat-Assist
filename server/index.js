@@ -127,12 +127,30 @@ app.get('/api/sample-excel', (req, res) => {
   }
 });
 
+// Real-time job progress tracking for chunking & graph construction
+const activeJobs = new Map();
+
+app.get('/api/graph/progress/:jobId', (req, res) => {
+  const job = activeJobs.get(req.params.jobId);
+  if (!job) {
+    return res.json({ percent: 0, stage: 'STARTING', message: 'Initializing pipeline...' });
+  }
+  res.json(job);
+});
+
 // Build graph from uploaded files (multi-file support) or sample
 app.post('/api/graph/build', upload.any(), async (req, res) => {
   try {
     const { llmConfig, neo4jConfig } = getConfigs(req);
     const uploadedFiles = req.files || [];
     const filesToProcess = [];
+    const jobId = req.body.jobId || `job_${Date.now()}`;
+
+    activeJobs.set(jobId, {
+      percent: 5,
+      stage: 'PARSE',
+      message: 'Reading and validating uploaded documents...'
+    });
 
     // 1. Collect files from upload
     uploadedFiles.forEach(f => {
@@ -176,6 +194,7 @@ app.post('/api/graph/build', upload.any(), async (req, res) => {
     }
 
     if (filesToProcess.length === 0 && !req.body.rows) {
+      activeJobs.delete(jobId);
       return res.status(400).json({ error: 'No files uploaded and no sample selected.' });
     }
 
@@ -186,8 +205,27 @@ app.post('/api/graph/build', upload.any(), async (req, res) => {
       includeLineage: req.body.includeLineage !== 'false',
       resolveCrossFile: req.body.resolveCrossFile !== 'false',
       llmConfig,
-      neo4jConfig
+      neo4jConfig,
+      onProgress: (entry) => {
+        activeJobs.set(jobId, {
+          percent: entry.percent || 15,
+          stage: entry.stage,
+          currentChunk: entry.currentChunk || 0,
+          totalChunks: entry.totalChunks || 0,
+          fileName: entry.fileName || '',
+          message: entry.message
+        });
+      }
     });
+
+    activeJobs.set(jobId, {
+      percent: 100,
+      stage: 'COMPLETE',
+      message: 'Knowledge graph construction complete!'
+    });
+
+    // Clean up job progress after 30 seconds
+    setTimeout(() => activeJobs.delete(jobId), 30000);
 
     res.json(result);
   } catch (error) {

@@ -34,6 +34,8 @@ export default function ExcelUploader({ config, onGraphBuilt, onSwitchToGraph })
   const [resolveCrossFile, setResolveCrossFile] = useState(true);
 
   const [building, setBuilding] = useState(false);
+  const [progressPercent, setProgressPercent] = useState(0);
+  const [progressDetails, setProgressDetails] = useState({ stage: '', message: '', currentChunk: 0, totalChunks: 0, fileName: '' });
   const [progressLogs, setProgressLogs] = useState([]);
   const [errorMsg, setErrorMsg] = useState('');
   const [successResult, setSuccessResult] = useState(null);
@@ -96,6 +98,7 @@ export default function ExcelUploader({ config, onGraphBuilt, onSwitchToGraph })
     setSelectedSamples([]);
     setErrorMsg('');
     setSuccessResult(null);
+    setProgressPercent(0);
   };
 
   // Add a sample dataset to queue
@@ -128,6 +131,14 @@ export default function ExcelUploader({ config, onGraphBuilt, onSwitchToGraph })
     setErrorMsg('');
     setProgressLogs([]);
     setSuccessResult(null);
+    setProgressPercent(5);
+    setProgressDetails({
+      stage: 'PARSE',
+      message: 'Reading and validating documents...',
+      currentChunk: 0,
+      totalChunks: 0,
+      fileName: ''
+    });
 
     const logs = [];
     const pushLog = (msg) => {
@@ -143,8 +154,12 @@ export default function ExcelUploader({ config, onGraphBuilt, onSwitchToGraph })
     pushLog(`Chunk Lineage: ${includeLineage ? 'ENABLED (Document ➔ Chunk ➔ Entity)' : 'Disabled'}`);
     pushLog(`Cross-File Entity Linking: ${resolveCrossFile ? 'ENABLED' : 'Disabled'}`);
 
+    const jobId = `job_${Date.now()}`;
+    let pollInterval = null;
+
     try {
       const formData = new FormData();
+      formData.append('jobId', jobId);
       
       // Append all user uploaded files
       files.forEach(f => {
@@ -162,6 +177,17 @@ export default function ExcelUploader({ config, onGraphBuilt, onSwitchToGraph })
       formData.append('resolveCrossFile', String(resolveCrossFile));
 
       pushLog(`Partitioning documents into semantic chunks and extracting metadata...`);
+
+      // Start real-time progress polling
+      pollInterval = setInterval(async () => {
+        try {
+          const p = await api.getProgress(jobId);
+          if (p && p.percent !== undefined) {
+            setProgressPercent(prev => Math.max(prev, p.percent));
+            setProgressDetails(p);
+          }
+        } catch (err) {}
+      }, 350);
       
       const res = await api.buildGraph(formData);
 
@@ -169,6 +195,14 @@ export default function ExcelUploader({ config, onGraphBuilt, onSwitchToGraph })
         if (Array.isArray(res.logs)) {
           res.logs.forEach(l => pushLog(`${l.stage}: ${l.message}`));
         }
+        setProgressPercent(100);
+        setProgressDetails({
+          stage: 'COMPLETE',
+          message: 'Knowledge graph construction complete!',
+          currentChunk: res.totalChunks || 0,
+          totalChunks: res.totalChunks || 0
+        });
+
         pushLog(`SUCCESS: ${res.totalFiles || totalFileCount} files processed into ${res.totalChunks || 0} chunks with ${res.totalEntities || 0} entities!`);
         if (res.crossFileLinks > 0) {
           pushLog(`CROSS-FILE: Established ${res.crossFileLinks} cross-file relationship bridges!`);
@@ -190,6 +224,7 @@ export default function ExcelUploader({ config, onGraphBuilt, onSwitchToGraph })
       setErrorMsg(errTxt);
       pushLog(`ERROR: ${errTxt}`);
     } finally {
+      if (pollInterval) clearInterval(pollInterval);
       setBuilding(false);
     }
   };
@@ -609,6 +644,116 @@ export default function ExcelUploader({ config, onGraphBuilt, onSwitchToGraph })
           )}
         </button>
       </div>
+
+      {/* Percentage Loading Bar for Chunking & Graph Construction */}
+      {(building || (progressPercent > 0 && progressPercent < 100)) && (
+        <div 
+          id="chunking-progress-panel"
+          className="glass-panel" 
+          style={{
+            padding: '18px 22px',
+            background: '#ffffff',
+            border: '1px solid #bfdbfe',
+            boxShadow: '0 4px 16px rgba(2, 132, 199, 0.08)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px'
+          }}
+        >
+          {/* Header row */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{
+                background: '#e0f2fe',
+                color: '#0284c7',
+                padding: '4px 10px',
+                borderRadius: '6px',
+                fontSize: '0.75rem',
+                fontWeight: '700',
+                letterSpacing: '0.5px',
+                textTransform: 'uppercase',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}>
+                <span className="pulse-dot" style={{ background: '#0284c7', width: '6px', height: '6px' }}></span>
+                <span>{progressDetails.stage || 'PROCESSING'}</span>
+              </div>
+              <div style={{ fontSize: '0.9rem', fontWeight: '600', color: '#1e293b' }}>
+                {progressDetails.message || 'Extracting semantic chunks and entities...'}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span id="progress-percentage-label" style={{ fontSize: '1.35rem', fontWeight: '800', color: '#0284c7', fontFamily: 'var(--font-mono)' }}>
+                {Math.round(progressPercent)}%
+              </span>
+            </div>
+          </div>
+
+          {/* Progress Bar Track & Fill */}
+          <div style={{
+            width: '100%',
+            height: '14px',
+            background: '#e2e8f0',
+            borderRadius: '999px',
+            overflow: 'hidden',
+            position: 'relative'
+          }}>
+            <div
+              id="chunking-progress-bar-fill"
+              className="progress-bar-shimmer"
+              style={{
+                width: `${Math.min(100, Math.max(progressPercent, 4))}%`,
+                height: '100%',
+                background: 'linear-gradient(90deg, #0284c7 0%, #008cc1 60%, #10b981 100%)',
+                borderRadius: '999px',
+                transition: 'width 0.35s ease-out',
+                position: 'relative'
+              }}
+            />
+          </div>
+
+          {/* Sub-status metadata info */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            fontSize: '0.8rem',
+            color: '#64748b',
+            flexWrap: 'wrap',
+            gap: '8px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              {progressDetails.fileName ? (
+                <>
+                  <FileText size={14} color="#0284c7" />
+                  <span>Processing: <strong style={{ color: '#0f172a' }}>{progressDetails.fileName}</strong></span>
+                </>
+              ) : (
+                <span style={{ color: '#94a3b8' }}>Multi-File Pipeline</span>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              {progressDetails.totalChunks > 0 ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', background: '#f8fafc', padding: '3px 10px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                  <Layers size={13} color="#0284c7" />
+                  <span style={{ fontWeight: '600', color: '#334155' }}>
+                    Chunk {progressDetails.currentChunk || 0} of {progressDetails.totalChunks}
+                  </span>
+                </div>
+              ) : (
+                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Analyzing document structure...</span>
+              )}
+
+              <span style={{ fontSize: '0.75rem', color: '#10b981', fontWeight: '600' }}>
+                ● Active
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Error notification */}
       {errorMsg && (

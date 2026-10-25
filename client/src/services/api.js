@@ -101,6 +101,11 @@ export const api = {
     return res.data;
   },
 
+  getProgress: async (jobId) => {
+    const res = await axios.get(`${API_BASE}/graph/progress/${jobId}`);
+    return res.data;
+  },
+
   chatWithGraph: async (question, history = []) => {
     const res = await axios.post(`${API_BASE}/chat`, { question, history }, {
       headers: getHeaders()

@@ -367,22 +367,36 @@ async function buildGraphFromMultiFiles({
   const allEdgesMap = new Map();
   const docEntityIndex = new Map(); // docId -> Set of entityIds
 
-  let totalChunksCount = 0;
+  addLog('PARSE', `Parsing ${rawFiles.length} files and calculating chunk boundaries...`, { percent: 5 });
+
+  // 1. Pre-parse and pre-chunk all files to calculate exact total chunks
+  const parsedFiles = [];
+  let totalChunksAcrossAllFiles = 0;
   let totalRecordsCount = 0;
 
-  // Process each file
   for (let fIdx = 0; fIdx < rawFiles.length; fIdx++) {
     const file = rawFiles[fIdx];
     const parsed = parseFile(file);
-    const docId = `doc_${parsed.fileName.replace(/[^a-zA-Z0-9]/g, '_')}`;
     const chunks = chunkFile(parsed, 6);
-
-    totalChunksCount += chunks.length;
+    parsedFiles.push({ parsed, chunks });
+    totalChunksAcrossAllFiles += chunks.length;
     totalRecordsCount += (parsed.records ? parsed.records.length : 1);
+  }
 
-    addLog('FILE_PARSE', `[File ${fIdx + 1}/${rawFiles.length}: ${parsed.fileName}] Parsed ${(parsed.records ? `${parsed.records.length} records` : 'text content')} ➔ partitioned into ${chunks.length} chunks.`);
+  addLog('PARSE', `Discovered ${totalRecordsCount} records across ${rawFiles.length} files ➔ partitioned into ${totalChunksAcrossAllFiles} total chunks.`, { 
+    percent: 10,
+    totalChunks: totalChunksAcrossAllFiles,
+    currentChunk: 0 
+  });
 
-    // 1. Document Node
+  let completedChunksCount = 0;
+
+  // 2. Process each file & its chunks
+  for (let fIdx = 0; fIdx < parsedFiles.length; fIdx++) {
+    const { parsed, chunks } = parsedFiles[fIdx];
+    const docId = `doc_${parsed.fileName.replace(/[^a-zA-Z0-9]/g, '_')}`;
+
+    // Document Node
     const docNode = {
       id: docId,
       label: parsed.fileName,
@@ -400,11 +414,18 @@ async function buildGraphFromMultiFiles({
     allDocNodes.push(docNode);
     docEntityIndex.set(docId, new Set());
 
-    // 2. Process each Chunk
     let prevChunkId = null;
     for (let cIdx = 0; cIdx < chunks.length; cIdx++) {
       const chunk = chunks[cIdx];
-      addLog('CHUNKING', `[${parsed.fileName}] Extracting entities from Chunk ${cIdx + 1}/${chunks.length}...`);
+      completedChunksCount++;
+      const currentPercent = Math.min(90, Math.round(10 + (completedChunksCount / totalChunksAcrossAllFiles) * 80));
+
+      addLog('CHUNKING', `[File ${fIdx + 1}/${parsedFiles.length}: ${parsed.fileName}] Extracting Chunk ${cIdx + 1}/${chunks.length} (Overall: ${completedChunksCount}/${totalChunksAcrossAllFiles})...`, {
+        percent: currentPercent,
+        currentChunk: completedChunksCount,
+        totalChunks: totalChunksAcrossAllFiles,
+        fileName: parsed.fileName
+      });
 
       let extracted = null;
       if (hasLlmKey) {
@@ -418,7 +439,7 @@ async function buildGraphFromMultiFiles({
             config: llmConfig
           });
         } catch (err) {
-          addLog('WARNING', `LLM extraction note for chunk ${cIdx + 1}: ${err.message}. Applying heuristic extractor.`);
+          addLog('WARNING', `LLM note for chunk ${completedChunksCount}: ${err.message}. Applying heuristic extractor.`, { percent: currentPercent });
         }
       }
 
@@ -570,7 +591,7 @@ async function buildGraphFromMultiFiles({
               sharedEntities: sharedEntities.slice(0, 10)
             }
           });
-          addLog('CROSS_CONNECT', `Connected [${docA}] and [${docB}] via ${sharedEntities.length} shared entities (${sharedEntities.slice(0, 3).join(', ')}).`);
+          addLog('CROSS_CONNECT', `Connected [${docA}] and [${docB}] via ${sharedEntities.length} shared entities (${sharedEntities.slice(0, 3).join(', ')}).`, { percent: 92 });
         }
       }
     }
@@ -593,23 +614,23 @@ async function buildGraphFromMultiFiles({
   });
 
   // Ingest to live Neo4j Desktop
-  addLog('NEO4J_PERSIST', `Injecting ${combinedNodes.length} nodes and ${combinedEdges.length} connections across ${rawFiles.length} files into Neo4j Desktop...`);
+  addLog('NEO4J_PERSIST', `Injecting ${combinedNodes.length} nodes and ${combinedEdges.length} connections across ${rawFiles.length} files into Neo4j Desktop...`, { percent: 96 });
   try {
     await ingestUniversalToNeo4j(combinedNodes, combinedEdges, neo4jConfig);
-    addLog('SUCCESS', `Multi-file Knowledge Graph successfully committed to Neo4j Desktop DBMS!`);
+    addLog('SUCCESS', `Multi-file Knowledge Graph successfully committed to Neo4j Desktop DBMS!`, { percent: 98 });
   } catch (err) {
-    addLog('NOTICE', `Neo4j Desktop is offline (${err.message}). Active Memory Store ready with full multi-file graph.`);
+    addLog('NOTICE', `Neo4j Desktop is offline (${err.message}). Active Memory Store ready with full multi-file graph.`, { percent: 98 });
   }
 
   const stats = await neo4jService.getGraphStats(neo4jConfig);
   const graphData = await neo4jService.getGraphData(600, neo4jConfig);
 
-  addLog('COMPLETE', `Pipeline finished! Processed ${rawFiles.length} files into ${totalChunksCount} chunks, mapping ${allEntityNodesMap.size} unique entities and ${combinedEdges.length} connections.`);
+  addLog('COMPLETE', `Pipeline finished! Processed ${rawFiles.length} files into ${totalChunksAcrossAllFiles} chunks, mapping ${allEntityNodesMap.size} unique entities and ${combinedEdges.length} connections.`, { percent: 100 });
 
   return {
     success: true,
     totalFiles: rawFiles.length,
-    totalChunks: totalChunksCount,
+    totalChunks: totalChunksAcrossAllFiles,
     totalProcessed: totalRecordsCount,
     totalEntities: allEntityNodesMap.size,
     totalConnections: combinedEdges.length,
