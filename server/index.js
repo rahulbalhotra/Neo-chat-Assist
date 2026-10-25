@@ -231,6 +231,15 @@ app.post('/api/cypher/run', async (req, res) => {
   }
 });
 
+// Global error handling middleware (handles Multer errors gracefully)
+app.use((err, req, res, next) => {
+  console.error('Unhandled Server Error:', err);
+  if (err instanceof multer.MulterError) {
+    return res.status(400).json({ success: false, error: `Upload error: ${err.message} (${err.code})` });
+  }
+  res.status(500).json({ success: false, error: err.message || 'Internal Server Error' });
+});
+
 app.listen(PORT, () => {
   console.log(`Backend server running on http://localhost:${PORT}`);
 });

@@ -4,10 +4,10 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "server": "node server/index.js",
+    "server": "node --watch server/index.js",
     "client": "npm --prefix client run dev",
     "dev": "concurrently -k -n \"SERVER,CLIENT\" -c \"blue,cyan\" \"npm run server\" \"npm run client\"",
-    "start": "node server/index.js"
+    "start": "node --watch server/index.js"
   },
   "keywords": [],
   "author": "",
