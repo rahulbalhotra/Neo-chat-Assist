@@ -12,7 +12,7 @@ export function getSavedConfig() {
   return {
     provider: 'gemini',
     geminiApiKey: '',
-    geminiModel: 'gemini-1.5-flash',
+    geminiModel: 'gemini-3.6',
     azureEndpoint: '',
     azureApiKey: '',
     azureDeployment: 'gpt-4o',

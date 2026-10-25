@@ -72,7 +72,7 @@ async function callAzureOpenAI({ messages, temperature = 0.2, jsonMode = false, 
  */
 async function callGemini({ systemInstruction, userPrompt, temperature = 0.2, jsonMode = false, config }) {
   const apiKey = config.geminiApiKey || process.env.GEMINI_API_KEY;
-  const model = config.geminiModel || process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+  const model = config.geminiModel || process.env.GEMINI_MODEL || 'gemini-3.6';
 
   if (!apiKey) {
     throw new Error('Google Gemini API Key is missing. Please provide a Gemini API Key.');

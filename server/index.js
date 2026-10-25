@@ -28,7 +28,7 @@ function getConfigs(req) {
   const llmConfig = {
     provider: req.headers['x-llm-provider'] || req.body.provider || 'gemini',
     geminiApiKey: req.headers['x-gemini-api-key'] || req.body.geminiApiKey || process.env.GEMINI_API_KEY,
-    geminiModel: req.headers['x-gemini-model'] || req.body.geminiModel || process.env.GEMINI_MODEL || 'gemini-1.5-flash',
+    geminiModel: req.headers['x-gemini-model'] || req.body.geminiModel || process.env.GEMINI_MODEL || 'gemini-3.6',
     azureEndpoint: req.headers['x-azure-endpoint'] || req.body.azureEndpoint || process.env.AZURE_OPENAI_ENDPOINT,
     azureApiKey: req.headers['x-azure-api-key'] || req.body.azureApiKey || process.env.AZURE_OPENAI_API_KEY,
     azureDeployment: req.headers['x-azure-deployment'] || req.body.azureDeployment || process.env.AZURE_OPENAI_DEPLOYMENT || 'gpt-4o',

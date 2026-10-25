@@ -359,7 +359,7 @@ export default function ExcelUploader({ config, onGraphBuilt, onSwitchToGraph })
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <span style={{ fontSize: '0.85rem', color: '#64748b' }}>Extraction Engine:</span>
           <span className={`badge ${config.provider === 'azure' ? 'badge-azure' : 'badge-gemini'}`}>
-            {config.provider === 'azure' ? `Azure OpenAI (${config.azureDeployment || 'gpt-4o'})` : `Google Gemini (${config.geminiModel || 'gemini-1.5-flash'})`}
+            {config.provider === 'azure' ? `Azure OpenAI (${config.azureDeployment || 'gpt-4o'})` : `Google Gemini (${config.geminiModel || 'gemini-3.6'})`}
           </span>
           <span className="badge badge-neo4j">
             Target: Neo4j Desktop ({config.neo4jDatabase || 'neo4j'})

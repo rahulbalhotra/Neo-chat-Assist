@@ -260,13 +260,16 @@ export default function ConfigModal({ isOpen, onClose, config, onSaveConfig, onN
                     </label>
                     <select
                       id="select-gemini-model"
-                      value={form.geminiModel || 'gemini-1.5-flash'}
+                      value={form.geminiModel || 'gemini-3.6'}
                       onChange={(e) => setForm({ ...form, geminiModel: e.target.value })}
                       style={{ width: '100%', background: '#ffffff', borderColor: '#cbd5e1' }}
                     >
-                      <option value="gemini-1.5-flash">gemini-1.5-flash (Fast & Recommended)</option>
-                      <option value="gemini-1.5-pro">gemini-1.5-pro (High Reasoning)</option>
+                      <option value="gemini-3.6">gemini-3.6 (Latest Frontier)</option>
+                      <option value="gemini-3.6-pro">gemini-3.6-pro (Frontier Reasoning)</option>
+                      <option value="gemini-3.6-flash">gemini-3.6-flash (Fast & Efficient)</option>
                       <option value="gemini-2.0-flash">gemini-2.0-flash (Next-Gen)</option>
+                      <option value="gemini-1.5-pro">gemini-1.5-pro (High Reasoning)</option>
+                      <option value="gemini-1.5-flash">gemini-1.5-flash (Standard)</option>
                     </select>
                   </div>
                 </div>
